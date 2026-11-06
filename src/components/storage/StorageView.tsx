@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
 import { Product, ProductUnit, HppMethod, HppComponent, StockBatch, StockMovement, StockMovementType } from '@/types';
-import { formatRupiah, formatDateIndo, getExpiryStatus, getStockStatus, formatBatchName, getActiveProductExpiry } from '@/lib/utils';
+import { formatRupiah, formatDateIndo, getExpiryStatus, getStockStatus, formatBatchName, getActiveProductExpiry, formatThousands, parseThousands } from '@/lib/utils';
 import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
@@ -141,66 +141,83 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   // Custom Delete Confirm Modal State
   const [deleteTargetProduct, setDeleteTargetProduct] = useState<Product | null>(null);
 
-  // Product Form Fields
+  // Product Form Fields - All default to blank/empty so user inputs freely
   const [formName, setFormName] = useState('');
   const [formSku, setFormSku] = useState('');
-  const [formCategory, setFormCategory] = useState(categoryDefinitions[0]?.name || 'Bahan Baku & Dapur');
+  const [formCategory, setFormCategory] = useState('');
   const [formSubcategory, setFormSubcategory] = useState('');
-  const [formLocation, setFormLocation] = useState('Gudang Utama');
-  const [formUnit, setFormUnit] = useState<ProductUnit | string>('pcs');
+  const [formLocation, setFormLocation] = useState('');
+  const [formUnit, setFormUnit] = useState<ProductUnit | string>('');
   const [formImageUrl, setFormImageUrl] = useState(UMKM_IMAGE_PRESETS[0].url);
-  const [formCurrentStock, setFormCurrentStock] = useState('10');
-  const [formMinStock, setFormMinStock] = useState('5');
-  const [formPurchaseDate, setFormPurchaseDate] = useState('2026-10-26');
+  const [formCurrentStock, setFormCurrentStock] = useState('');
+  const [formMinStock, setFormMinStock] = useState('');
+  const [formPurchaseDate, setFormPurchaseDate] = useState('');
   const [formExpiryDate, setFormExpiryDate] = useState<string | null>(null);
-  const [formSellingPrice, setFormSellingPrice] = useState('20000');
+  const [formSellingPrice, setFormSellingPrice] = useState('');
 
   // Profit Margin Slider State
   const [profitMarginPercent, setProfitMarginPercent] = useState(30);
 
   // Batches State (FEFO Multi-Batch tracking per input)
   const [formBatches, setFormBatches] = useState<StockBatch[]>([]);
-  const [newBatchQty, setNewBatchQty] = useState('10');
+  const [newBatchQty, setNewBatchQty] = useState('');
   const [newBatchExpiry, setNewBatchExpiry] = useState<string | null>(null);
   const [newBatchCode, setNewBatchCode] = useState('');
   const [showAddBatchRow, setShowAddBatchRow] = useState(false);
 
-  // HPP Calculator States
+  // HPP Calculator States - All default to blank/empty
   const [hppMethod, setHppMethod] = useState<HppMethod>('wholesale');
-  const [wholesaleTotalCost, setWholesaleTotalCost] = useState('180000');
-  const [wholesaleUnitsCount, setWholesaleUnitsCount] = useState('12');
-  const [wholesaleShipping, setWholesaleShipping] = useState('12000');
-  const [wholesaleWastePercent, setWholesaleWastePercent] = useState('2');
+  const [wholesaleTotalCost, setWholesaleTotalCost] = useState('');
+  const [wholesaleUnitsCount, setWholesaleUnitsCount] = useState('');
+  const [wholesaleShipping, setWholesaleShipping] = useState('');
+  const [wholesaleWastePercent, setWholesaleWastePercent] = useState('');
 
-  const [recipeComponents, setRecipeComponents] = useState<HppComponent[]>([
-    { id: '1', name: 'Bahan Baku Utama', cost: 4000 },
-    { id: '2', name: 'Bahan Tambahan', cost: 2500 },
-    { id: '3', name: 'Kemasan & Plastik', cost: 1200 },
-  ]);
-  const [recipeOverhead, setRecipeOverhead] = useState('500');
+  const [recipeComponents, setRecipeComponents] = useState<HppComponent[]>([]);
+  const [recipeOverhead, setRecipeOverhead] = useState('');
   const [newCompName, setNewCompName] = useState('');
   const [newCompCost, setNewCompCost] = useState('');
 
-  const [manualHpp, setManualHpp] = useState('10000');
+  const [manualHpp, setManualHpp] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [supplierNotes, setSupplierNotes] = useState('');
 
-  // Calculate HPP dynamically
+  // Batch management helpers for full user control and real-time total stock synchronization
+  const handleUpdateBatch = (index: number, updates: Partial<StockBatch>) => {
+    setFormBatches((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      const total = next.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
+      setFormCurrentStock(total > 0 ? total.toString() : '');
+      return next;
+    });
+  };
+
+  const handleDeleteBatch = (index: number) => {
+    setFormBatches((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      const total = next.reduce((acc, b) => acc + (Number(b.quantity) || 0), 0);
+      setFormCurrentStock(total > 0 ? total.toString() : '');
+      return next;
+    });
+  };
+
+  // Calculate HPP dynamically with automatic dot thousand separators
   const computedHpp = useMemo(() => {
     if (hppMethod === 'wholesale') {
-      const rawCost = parseFloat(wholesaleTotalCost) || 0;
-      const shipping = parseFloat(wholesaleShipping) || 0;
-      const count = parseFloat(wholesaleUnitsCount) || 1;
+      const rawCost = parseThousands(wholesaleTotalCost);
+      const shipping = parseThousands(wholesaleShipping);
+      const count = parseThousands(wholesaleUnitsCount) || 1;
       const wastePercent = parseFloat(wholesaleWastePercent) || 0;
+      if (rawCost === 0 && shipping === 0) return 0;
       const basePerUnit = (rawCost + shipping) / (count > 0 ? count : 1);
       const withWaste = basePerUnit * (1 + wastePercent / 100);
       return Math.round(withWaste);
     } else if (hppMethod === 'recipe') {
       const componentsSum = recipeComponents.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
-      const overhead = parseFloat(recipeOverhead) || 0;
+      const overhead = parseThousands(recipeOverhead);
       return Math.round(componentsSum + overhead);
     } else {
-      return parseFloat(manualHpp) || 0;
+      return parseThousands(manualHpp);
     }
   }, [
     hppMethod,
@@ -216,15 +233,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   // Synchronize Selling Price when Margin Slider changes
   const handleMarginSliderChange = (newMargin: number) => {
     setProfitMarginPercent(newMargin);
-    const calculatedPrice = Math.round(computedHpp * (1 + newMargin / 100));
-    setFormSellingPrice(calculatedPrice.toString());
+    if (computedHpp > 0) {
+      const calculatedPrice = Math.round(computedHpp * (1 + newMargin / 100));
+      setFormSellingPrice(formatThousands(calculatedPrice));
+    }
   };
 
   // Synchronize Margin Slider when Selling Price input changes
   const handleSellingPriceInputChange = (newPriceStr: string) => {
-    setFormSellingPrice(newPriceStr);
-    const priceNum = parseFloat(newPriceStr) || 0;
-    if (computedHpp > 0) {
+    const formatted = formatThousands(newPriceStr);
+    setFormSellingPrice(formatted);
+    const priceNum = parseThousands(newPriceStr);
+    if (computedHpp > 0 && priceNum > 0) {
       const margin = Math.round(((priceNum - computedHpp) / computedHpp) * 100);
       setProfitMarginPercent(Math.max(-100, Math.min(300, margin)));
     }
@@ -232,6 +252,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
   // Sub-categories available for current form category
   const availableSubcategoriesForForm = useMemo(() => {
+    if (!formCategory) return [];
     const matched = categoryDefinitions.find(
       (c) => c.name.toLowerCase() === formCategory.toLowerCase()
     );
@@ -256,34 +277,29 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     setFormName('');
     const skuCode = `KSR-${Math.floor(100 + Math.random() * 900)}`;
     setFormSku(skuCode);
-    const defaultCat = categoryDefinitions[0]?.name || 'Bahan Baku & Dapur';
-    setFormCategory(defaultCat);
-    setFormSubcategory(categoryDefinitions[0]?.subcategories[0] || '');
-    setFormLocation('Gudang Utama');
-    setFormUnit('pcs');
+    setFormCategory('');
+    setFormSubcategory('');
+    setFormLocation('');
+    setFormUnit('');
     setFormImageUrl(UMKM_IMAGE_PRESETS[0].url);
-    setFormCurrentStock('10');
-    setFormMinStock('5');
-    setFormPurchaseDate(new Date().toISOString().split('T')[0]);
+    setFormCurrentStock('');
+    setFormMinStock('');
+    setFormPurchaseDate('');
     setFormExpiryDate(null);
     setFormBatches([]);
     setShowAddBatchRow(false);
     setHppMethod('wholesale');
-    setWholesaleTotalCost('180000');
-    setWholesaleUnitsCount('12');
-    setWholesaleShipping('10000');
-    setWholesaleWastePercent('2');
-    setRecipeComponents([
-      { id: '1', name: 'Bahan Baku Utama', cost: 4000 },
-      { id: '2', name: 'Bahan Tambahan', cost: 2500 },
-      { id: '3', name: 'Kemasan & Plastik', cost: 1200 },
-    ]);
-    setRecipeOverhead('500');
-    setManualHpp('10000');
+    setWholesaleTotalCost('');
+    setWholesaleUnitsCount('');
+    setWholesaleShipping('');
+    setWholesaleWastePercent('');
+    setRecipeComponents([]);
+    setRecipeOverhead('');
+    setManualHpp('');
     setSupplierName('');
     setSupplierNotes('');
     setProfitMarginPercent(30);
-    setFormSellingPrice('19500');
+    setFormSellingPrice('');
     setIsProductModalOpen(true);
   };
 
@@ -293,39 +309,39 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     setFormSku(prod.sku);
     setFormCategory(prod.category);
     setFormSubcategory(prod.subcategory || '');
-    setFormLocation(prod.location || 'Gudang Utama');
+    setFormLocation(prod.location || '');
     setFormUnit(prod.unit);
     setFormImageUrl(prod.imageUrl);
     setFormCurrentStock(prod.currentStock.toString());
-    setFormMinStock(prod.minStockAlert.toString());
-    setFormPurchaseDate(prod.purchaseDate || new Date().toISOString().split('T')[0]);
+    setFormMinStock(prod.minStockAlert ? prod.minStockAlert.toString() : '');
+    setFormPurchaseDate(prod.purchaseDate || '');
     setFormExpiryDate(prod.expiryDate || null);
     setShowAddBatchRow(false);
 
     if (prod.batches && prod.batches.length > 0) {
       setFormBatches([...prod.batches]);
     } else {
-      setFormBatches([
-        {
-          id: `batch-${prod.id}-01`,
-          quantity: prod.currentStock,
-          expiryDate: prod.expiryDate || null,
-          receivedDate: prod.purchaseDate || new Date().toISOString().split('T')[0],
-          costPerUnit: prod.hppAmount,
-          batchCode: formatBatchName(prod.purchaseDate || new Date().toISOString().split('T')[0]),
-        },
-      ]);
+      setFormBatches([]);
     }
 
-    setFormSellingPrice(prod.sellingPrice.toString());
+    setFormSellingPrice(prod.sellingPrice ? formatThousands(prod.sellingPrice) : '');
     setHppMethod(prod.hppMethod);
-    setManualHpp(prod.hppAmount.toString());
+    setManualHpp(prod.hppAmount ? formatThousands(prod.hppAmount) : '');
+    setWholesaleTotalCost('');
+    setWholesaleUnitsCount('');
+    setWholesaleShipping('');
+    setWholesaleWastePercent('');
     if (prod.hppBreakdown && prod.hppBreakdown.length > 0) {
       setRecipeComponents(prod.hppBreakdown);
+    } else {
+      setRecipeComponents([]);
     }
-    if (prod.hppAmount > 0) {
+    setRecipeOverhead('');
+    if (prod.hppAmount > 0 && prod.sellingPrice > 0) {
       const margin = Math.round(((prod.sellingPrice - prod.hppAmount) / prod.hppAmount) * 100);
       setProfitMarginPercent(margin);
+    } else {
+      setProfitMarginPercent(30);
     }
     setIsProductModalOpen(true);
   };
@@ -344,20 +360,20 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     const productPayload = {
       name: formName.trim(),
       sku: formSku.trim() || `KSR-${Math.floor(100 + Math.random() * 900)}`,
-      category: formCategory,
-      subcategory: formSubcategory || undefined,
+      category: formCategory.trim() || 'Lainnya',
+      subcategory: formSubcategory.trim(),
       location: formLocation.trim() || 'Gudang Utama',
-      unit: formUnit as ProductUnit,
+      unit: (formUnit.trim() || 'pcs') as ProductUnit,
       imageUrl: formImageUrl.trim() || UMKM_IMAGE_PRESETS[0].url,
       currentStock: finalStock,
       minStockAlert: Math.max(0, parseInt(formMinStock) || 0),
-      purchaseDate: formPurchaseDate,
+      purchaseDate: formPurchaseDate || new Date().toISOString().split('T')[0],
       expiryDate: earliestBatchExpiry || undefined,
       batches: formBatches.length > 0 ? formBatches : undefined,
       hppAmount: computedHpp,
       hppMethod,
       hppBreakdown: hppMethod === 'recipe' ? recipeComponents : undefined,
-      sellingPrice: Math.max(0, parseInt(formSellingPrice) || 0),
+      sellingPrice: Math.max(0, parseThousands(formSellingPrice)),
     };
 
     if (editingProductId) {
@@ -379,7 +395,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     setMovQty('1');
     setMovBatchCode(formatBatchName(todayStr));
     setMovBatchExpiry(null);
-    setMovFinancialAmount(target?.hppAmount ? target.hppAmount.toString() : '0');
+    setMovFinancialAmount(target?.hppAmount ? formatThousands(target.hppAmount) : '0');
     setMovLocation(target?.location || 'Gudang Utama');
     setMovSource('Input Manual Gudang');
     setMovNotes('');
@@ -394,7 +410,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     setMovQty(Math.abs(mov.quantityDelta).toString());
     setMovBatchCode(mov.batchCode || formatBatchName(new Date().toISOString().split('T')[0]));
     setMovBatchExpiry(mov.batchExpiry || null);
-    setMovFinancialAmount(mov.financialAmount ? mov.financialAmount.toString() : '0');
+    setMovFinancialAmount(mov.financialAmount ? formatThousands(mov.financialAmount) : '0');
     setMovLocation(mov.location || 'Gudang Utama');
     setMovSource(mov.source || 'Input Manual Gudang');
     setMovNotes(mov.notes || '');
@@ -425,7 +441,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
         quantityDelta: delta,
         batchCode: movBatchCode,
         batchExpiry: movBatchExpiry,
-        financialAmount: parseFloat(movFinancialAmount) || 0,
+        financialAmount: parseThousands(movFinancialAmount) || 0,
         location: movLocation,
         source: movSource,
         notes: movNotes,
@@ -445,59 +461,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
         stockAfter,
         batchCode: movBatchCode,
         batchExpiry: movBatchExpiry,
-        financialAmount: parseFloat(movFinancialAmount) || 0,
+        financialAmount: parseThousands(movFinancialAmount) || 0,
         source: movSource,
         notes: movNotes || (movType === 'in_purchase' ? 'Kulakan stok baru' : movType === 'out_sale' ? 'Penjualan ke pelanggan' : movType === 'waste' ? 'Barang basi / rusak' : 'Koreksi stok opname'),
       });
-
-      // Update physical product inventory in context
-      if (matchedProduct) {
-        if (movType === 'in_purchase') {
-          const newBatch: StockBatch = {
-            id: `batch-${Date.now()}`,
-            quantity: qtyNum,
-            expiryDate: movBatchExpiry || null,
-            receivedDate: movDate,
-            costPerUnit: matchedProduct.hppAmount,
-            batchCode: movBatchCode || formatBatchName(movDate),
-          };
-          const existingBatches = matchedProduct.batches ? [...matchedProduct.batches] : [];
-          existingBatches.push(newBatch);
-          const earliestExp = getActiveProductExpiry(existingBatches, matchedProduct.expiryDate);
-          updateProduct(matchedProduct.id, {
-            currentStock: stockAfter,
-            batches: existingBatches,
-            expiryDate: earliestExp || undefined,
-          });
-        } else if (movType === 'out_sale' || movType === 'waste') {
-          // FEFO deduction from batches
-          let remainingToDeduct = qtyNum;
-          const updatedBatches = matchedProduct.batches ? matchedProduct.batches.map((b) => ({ ...b })) : [];
-          if (updatedBatches.length > 0) {
-            updatedBatches.sort((a, b) => {
-              if (!a.expiryDate) return 1;
-              if (!b.expiryDate) return -1;
-              return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
-            });
-            for (const b of updatedBatches) {
-              if (remainingToDeduct <= 0) break;
-              if (b.quantity > 0) {
-                const deduct = Math.min(b.quantity, remainingToDeduct);
-                b.quantity -= deduct;
-                remainingToDeduct -= deduct;
-              }
-            }
-          }
-          const earliestExp = getActiveProductExpiry(updatedBatches, matchedProduct.expiryDate);
-          updateProduct(matchedProduct.id, {
-            currentStock: stockAfter,
-            batches: updatedBatches.length > 0 ? updatedBatches : undefined,
-            expiryDate: earliestExp || undefined,
-          });
-        } else {
-          updateProduct(matchedProduct.id, { currentStock: stockAfter });
-        }
-      }
     }
 
     setIsMovementModalOpen(false);
@@ -658,10 +625,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
       {/* 1. Header & Actions Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <span>Manajemen Gudang & Stok</span>
           </h1>
-          <p className="text-xs text-[#8a8a92] mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Katalog stok fisik, pelacak FEFO kedaluwarsa, dan buku mutasi keluar-masuk gudang
           </p>
         </div>
@@ -672,7 +639,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             <>
               <button
                 onClick={handleOpenAddModal}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-semibold transition-all shadow active:scale-95"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Tambah Barang</span>
@@ -680,16 +647,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
               <button
                 onClick={onOpenScan}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#202024] hover:bg-[#28282e] text-stone-200 border border-[#2c2c32] text-xs font-medium transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
               >
-                <ScanLine className="w-3.5 h-3.5 text-stone-300" />
+                <ScanLine className="w-3.5 h-3.5 text-slate-500" />
                 <span>Scan Nota Kulakan</span>
               </button>
             </>
           ) : (
             <button
               onClick={() => handleOpenAddMovement()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>Catat Mutasi Manual</span>
@@ -698,9 +665,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
           <button
             onClick={onOpenVoice}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#202024] hover:bg-[#28282e] text-stone-200 border border-[#2c2c32] text-xs font-medium transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
           >
-            <Mic className="w-3.5 h-3.5 text-stone-300" />
+            <Mic className="w-3.5 h-3.5 text-slate-500" />
             <span>Bicara Stok</span>
           </button>
         </div>
@@ -708,14 +675,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* 2. Top Segmented Mode Switcher (Katalog & Stok Fisik vs Buku Mutasi Gudang) */}
       <div className="flex items-center justify-center sm:justify-start">
-        <div className="inline-flex items-center p-1 bg-[#171719] border border-[#2c2c32] rounded-full shadow-inner">
+        <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200/80 rounded-full shadow-inner">
           <button
             type="button"
             onClick={() => setActiveStorageTab('catalog')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               activeStorageTab === 'catalog'
-                ? 'bg-white text-black shadow-md'
-                : 'text-stone-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Boxes className="w-3.5 h-3.5" />
@@ -727,8 +694,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             onClick={() => setActiveStorageTab('movement')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               activeStorageTab === 'movement'
-                ? 'bg-white text-black shadow-md'
-                : 'text-stone-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
@@ -742,503 +709,555 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
         <div className="space-y-6">
           {/* Top Summary KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] hover:border-white/20 rounded-2xl p-4 space-y-1 transition-colors">
-          <div className="text-[11px] text-[#8a8a92]">Total Jenis Barang</div>
-          <div className="text-xl font-bold text-white font-mono">{products.length} SKU</div>
-          <div className="text-[10px] text-[#71717a]">Terdaftar di gudang</div>
-        </div>
-
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] hover:border-white/20 rounded-2xl p-4 space-y-1 transition-colors">
-          <div className="text-[11px] text-[#8a8a92]">Nilai Aset Stok (HPP)</div>
-          <div className="text-xl font-bold text-white font-mono">{formatRupiah(totalAssetValue)}</div>
-          <div className="text-[10px] text-[#71717a]">Modal tertanam di gudang</div>
-        </div>
-
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] hover:border-white/20 rounded-2xl p-4 space-y-1 transition-colors">
-          <div className="text-[11px] text-[#8a8a92]">Stok Kritis / Menipis</div>
-          <div className="text-xl font-bold text-white font-mono">{criticalStockCount} Barang</div>
-          <div className="text-[10px] text-[#71717a]">Perlu restock segera</div>
-        </div>
-
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] hover:border-white/20 rounded-2xl p-4 space-y-1 transition-colors">
-          <div className="text-[11px] text-[#8a8a92]">Mendekati Kadaluarsa</div>
-          <div className="text-xl font-bold text-white font-mono">{nearExpiryCount} Barang</div>
-          <div className="text-[10px] text-[#71717a]">Dalam 7 hari ke depan</div>
-        </div>
-      </div>
-
-      {/* 3. Search & 2-Tier Category Filter Bar */}
-      <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-3 shadow-lg">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Search Box */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nama barang, SKU, kategori utama, atau sub-kategori (ayam, sayur)..."
-              className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-full pl-9 pr-4 py-2 text-xs text-white placeholder-[#71717a] focus:outline-none transition-colors"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-[#171719] p-1 rounded-full border border-[#2c2c32]">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-full text-xs transition-colors ${
-                  viewMode === 'grid' ? 'bg-white text-black' : 'text-stone-400 hover:text-white'
-                }`}
-                title="Tampilan Kartu"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-full text-xs transition-colors ${
-                  viewMode === 'table' ? 'bg-white text-black' : 'text-stone-400 hover:text-white'
-                }`}
-                title="Tampilan Tabel"
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
+            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium">Total Jenis Barang</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">{products.length} SKU</div>
+              <div className="text-[10px] text-slate-400">Terdaftar di gudang</div>
             </div>
 
-            {/* Add Category / Sub-Category Trigger */}
-            <button
-              onClick={() => {
-                setCatModalType('main');
-                setNewCatName('');
-                setIsCatModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#202024] hover:bg-[#28282e] text-stone-200 border border-[#2c2c32] text-xs font-medium transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Kelola Kategori</span>
-            </button>
-          </div>
-        </div>
+            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium">Nilai Aset Stok (HPP)</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">{formatRupiah(totalAssetValue)}</div>
+              <div className="text-[10px] text-slate-400">Modal tertanam di gudang</div>
+            </div>
 
-        {/* TIER 1: Kategori Utama Universal */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-[#8a8a92] uppercase tracking-wider flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5 text-stone-400" />
-              <span>Kategori Utama:</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setCatModalType('main');
-                setNewCatName('');
-                setIsCatModalOpen(true);
-              }}
-              className="text-[10px] text-stone-400 hover:text-white flex items-center gap-1 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Tambah Kategori Utama</span>
-            </button>
+            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium">Stok Kritis / Menipis</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">{criticalStockCount} Barang</div>
+              <div className="text-[10px] text-rose-500 font-medium">Perlu restock segera</div>
+            </div>
+
+            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium">Mendekati Kadaluarsa</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">{nearExpiryCount} Barang</div>
+              <div className="text-[10px] text-amber-600 font-medium">Dalam 7 hari ke depan</div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            <button
-              onClick={() => {
-                setSelectedMainCategory('Semua');
-                setSelectedSubcategory('Semua');
-              }}
-              className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
-                selectedMainCategory === 'Semua'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'bg-[#171719] text-stone-400 hover:text-white border border-[#2c2c32]'
-              }`}
-            >
-              Semua Kategori ({products.length})
-            </button>
+          {/* 3. Search & 2-Tier Category Filter Bar */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Search Box */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari nama barang, SKU, kategori utama, atau sub-kategori (ayam, sayur)..."
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-full pl-9 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors"
+                />
+              </div>
 
-            {categoryDefinitions.map((cat) => {
-              const count = products.filter((p) => p.category === cat.name).length;
-              return (
+              <div className="flex items-center gap-2">
+                {/* View Mode Toggle */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200/70">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-full text-xs transition-colors ${
+                      viewMode === 'grid' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                    title="Tampilan Kartu"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded-full text-xs transition-colors ${
+                      viewMode === 'table' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                    title="Tampilan Tabel"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Add Category / Sub-Category Trigger */}
                 <button
-                  key={cat.id}
                   onClick={() => {
-                    setSelectedMainCategory(cat.name);
+                    setCatModalType('main');
+                    setNewCatName('');
+                    setIsCatModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 text-xs font-semibold transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Kelola Kategori</span>
+                </button>
+              </div>
+            </div>
+
+            {/* TIER 1: Kategori Utama Universal */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Kategori Utama:</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatModalType('main');
+                    setNewCatName('');
+                    setIsCatModalOpen(true);
+                  }}
+                  className="text-[10px] text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors font-medium"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Tambah Kategori Utama</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                <button
+                  onClick={() => {
+                    setSelectedMainCategory('Semua');
                     setSelectedSubcategory('Semua');
                   }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
-                    selectedMainCategory === cat.name
-                      ? 'bg-white text-black shadow-sm'
-                      : 'bg-[#171719] text-stone-400 hover:text-white border border-[#2c2c32]'
+                    selectedMainCategory === 'Semua'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
                   }`}
                 >
-                  {cat.name} ({count})
+                  Semua Kategori ({products.length})
                 </button>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* TIER 2: Sub-Kategori Chips (Dynamically based on Main Category) */}
-        {availableSubcategoriesForFilter.length > 0 && (
-          <div className="space-y-1.5 pt-2 border-t border-[#28282e]">
-            <div className="flex items-center justify-between text-[11px] text-[#8a8a92]">
-              <span className="flex items-center gap-1 font-semibold uppercase tracking-wider">
-                <Tag className="w-3 h-3 text-[#f2aa4b]" />
-                <span>
-                  Sub-Kategori {selectedMainCategory !== 'Semua' ? `(${selectedMainCategory})` : ''}:
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setCatModalType('sub');
-                  setTargetMainForSub(
-                    selectedMainCategory !== 'Semua'
-                      ? selectedMainCategory
-                      : categoryDefinitions[0]?.name || 'Bahan Baku'
-                  );
-                  setNewCatName('');
-                  setIsCatModalOpen(true);
-                }}
-                className="text-[10px] text-stone-400 hover:text-white flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Tambah Sub-Kategori</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              <button
-                onClick={() => setSelectedSubcategory('Semua')}
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium shrink-0 transition-colors ${
-                  selectedSubcategory === 'Semua'
-                    ? 'bg-[#f2aa4b] text-black font-bold'
-                    : 'bg-[#171719] text-stone-400 hover:text-white border border-[#2c2c32]'
-                }`}
-              >
-                Semua Sub
-              </button>
-
-              {availableSubcategoriesForFilter.map((sub, idx) => {
-                const subCount = products.filter(
-                  (p) =>
-                    p.subcategory === sub &&
-                    (selectedMainCategory === 'Semua' || p.category === selectedMainCategory)
-                ).length;
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedSubcategory(sub)}
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium shrink-0 transition-colors ${
-                      selectedSubcategory === sub
-                        ? 'bg-[#f2aa4b] text-black font-bold'
-                        : 'bg-[#171719] text-stone-300 hover:text-white border border-[#2c2c32]'
-                    }`}
-                  >
-                    {sub} {subCount > 0 ? `(${subCount})` : ''}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Secondary Filter Row: Condition, Expiry, & Location */}
-        <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-[#28282e] text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-[#8a8a92] text-[11px]">Kondisi Stok:</span>
-            <CustomDropdown
-              options={stockOptions}
-              value={stockFilter}
-              onChange={(val) => setStockFilter(val)}
-              buttonClassName="bg-[#171719]"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[#8a8a92] text-[11px]">Batas Kadaluarsa:</span>
-            <CustomDropdown
-              options={expiryOptions}
-              value={expiryFilter}
-              onChange={(val) => setExpiryFilter(val)}
-              buttonClassName="bg-[#171719]"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[#8a8a92] text-[11px] flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-[#f2aa4b]" />
-              <span>Lokasi Gudang:</span>
-            </span>
-            <CustomDropdown
-              options={locationFilterOptions}
-              value={selectedLocation}
-              onChange={(val) => setSelectedLocation(val)}
-              buttonClassName="bg-[#171719]"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Display Products: Grid View OR Table View */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredProducts.map((p) => {
-            const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
-            const expStatus = getExpiryStatus(p.expiryDate);
-
-            return (
-              <div
-                key={p.id}
-                onClick={() => handleOpenEditModal(p)}
-                className="bg-[#1c1c1f] border border-[#2c2c32] hover:border-white/20 rounded-2xl overflow-hidden transition-all duration-150 flex flex-col justify-between group shadow-md cursor-pointer"
-              >
-                <div>
-                  {/* Image with Direct Quick Change Overlay */}
-                  <div className="relative h-44 w-full bg-[#171719] overflow-hidden">
-                    <img
-                      src={p.imageUrl}
-                      alt={p.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-
-                    {/* Quick Change Photo Button */}
+                {categoryDefinitions.map((cat) => {
+                  const count = products.filter((p) => p.category === cat.name).length;
+                  return (
                     <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setQuickImageTarget(p);
+                      key={cat.id}
+                      onClick={() => {
+                        setSelectedMainCategory(cat.name);
+                        setSelectedSubcategory('Semua');
                       }}
-                      className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/70 hover:bg-black text-stone-300 hover:text-white backdrop-blur-md border border-[#3b3b40] transition-colors"
-                      title="Ganti Foto Barang"
+                      className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+                        selectedMainCategory === cat.name
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
+                      }`}
                     >
-                      <Camera className="w-3.5 h-3.5" />
+                      {cat.name} ({count})
                     </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                    {/* Top Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start max-w-[85%]">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#171719]/90 text-white backdrop-blur-sm border border-[#2c2c32]">
-                          {p.category}
-                        </span>
-                        {p.subcategory && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#282015]/90 text-[#f2aa4b] backdrop-blur-sm border border-[#44331e]">
-                            {p.subcategory}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-sm border ${
-                            stockStatus.status === 'danger'
-                              ? 'bg-[#2a171c]/90 text-rose-300 border-[#48202a]'
-                              : stockStatus.status === 'warning'
-                              ? 'bg-[#282015]/90 text-[#f2aa4b] border-[#44331e]'
-                              : 'bg-[#171719]/90 text-stone-300 border-[#2c2c32]'
-                          }`}
-                        >
-                          {stockStatus.label}: {p.currentStock} {p.unit}
-                        </span>
-
-                        {p.batches && p.batches.length > 1 && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#282015]/90 text-[#f2aa4b] backdrop-blur-sm border border-[#44331e] flex items-center gap-1">
-                            <Boxes className="w-2.5 h-2.5" />
-                            <span>{p.batches.length} Batch FEFO</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Expiry Badge */}
-                    {p.expiryDate && (
-                      <div className="absolute bottom-2 left-2.5 right-2.5">
-                        <span
-                          className={`w-full text-center block px-2.5 py-1 rounded-lg text-[10px] font-semibold backdrop-blur-md border ${
-                            expStatus.status === 'expired'
-                              ? 'bg-[#2a171c]/90 text-rose-300 border-[#48202a]'
-                              : expStatus.status === 'warning'
-                              ? 'bg-[#282015]/90 text-[#f2aa4b] border-[#44331e]'
-                              : 'bg-[#171719]/90 text-stone-300 border-[#2c2c32]'
-                          }`}
-                        >
-                          {expStatus.label} {p.batches && p.batches.length > 1 ? '(Batch Terdekat)' : ''}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Product Details */}
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-bold text-white text-sm leading-snug line-clamp-2 transition-colors">
-                        {p.name}
-                      </h3>
-                      <span className="text-[10px] font-mono text-[#71717a] shrink-0">
-                        {p.sku}
-                      </span>
-                    </div>
-
-                    {/* Storage Location Badge */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#8a8a92]">
-                      <MapPin className="w-3 h-3 text-[#f2aa4b] shrink-0" />
-                      <span className="truncate">{p.location || 'Gudang Utama'}</span>
-                    </div>
-
-                    {/* Prices */}
-                    <div className="pt-2 border-t border-[#28282e] flex items-center justify-between text-xs">
-                      <div>
-                        <div className="text-[10px] text-[#8a8a92]">Modal (HPP):</div>
-                        <div className="text-stone-300 font-semibold font-mono">
-                          {formatRupiah(p.hppAmount)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] text-[#8a8a92]">Harga Jual:</div>
-                        <div className="text-white font-bold font-mono">
-                          {formatRupiah(p.sellingPrice)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Action Footer */}
-                <div
-                  className="px-4 py-3 bg-[#171719] border-t border-[#28282e] flex items-center justify-between text-xs"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span className="text-[11px] text-[#71717a]">Klik kartu untuk rincian</span>
-
+            {/* TIER 2: Sub-Kategori Chips (Dynamically based on Main Category) */}
+            {availableSubcategoriesForFilter.length > 0 && (
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="flex items-center gap-1 font-semibold uppercase tracking-wider">
+                    <Tag className="w-3 h-3 text-amber-500" />
+                    <span>
+                      Sub-Kategori {selectedMainCategory !== 'Semua' ? `(${selectedMainCategory})` : ''}:
+                    </span>
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setDeleteTargetProduct(p)}
-                    className="p-1 rounded text-[#71717a] hover:text-rose-400 transition-colors"
-                    title="Hapus barang"
+                    onClick={() => {
+                      setCatModalType('sub');
+                      setTargetMainForSub(
+                        selectedMainCategory !== 'Semua'
+                          ? selectedMainCategory
+                          : categoryDefinitions[0]?.name || 'Bahan Baku'
+                      );
+                      setNewCatName('');
+                      setIsCatModalOpen(true);
+                    }}
+                    className="text-[10px] text-slate-500 hover:text-slate-900 flex items-center gap-1 font-medium"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah Sub-Kategori</span>
                   </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Table View */
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-[#171719] border-b border-[#28282e] text-[#8a8a92] font-semibold uppercase tracking-wider text-[11px]">
-                  <th className="py-3 px-4">Barang & SKU</th>
-                  <th className="py-3 px-4">Kategori & Sub</th>
-                  <th className="py-3 px-4 text-center">Stok</th>
-                  <th className="py-3 px-4">Batas Kadaluarsa</th>
-                  <th className="py-3 px-4 text-right">Modal (HPP)</th>
-                  <th className="py-3 px-4 text-right">Harga Jual</th>
-                  <th className="py-3 px-4 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#242428]">
-                {filteredProducts.map((p) => {
-                  const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
-                  const expStatus = getExpiryStatus(p.expiryDate);
 
-                  return (
-                    <tr
-                      key={p.id}
-                      onClick={() => handleOpenEditModal(p)}
-                      className="hover:bg-[#222226] transition-colors cursor-pointer"
-                    >
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={p.imageUrl}
-                            alt={p.name}
-                            className="w-9 h-9 rounded-lg object-cover border border-[#2c2c32]"
-                          />
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    onClick={() => setSelectedSubcategory('Semua')}
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors ${
+                      selectedSubcategory === 'Semua'
+                        ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
+                    }`}
+                  >
+                    Semua Sub
+                  </button>
+
+                  {availableSubcategoriesForFilter.map((sub, idx) => {
+                    const subCount = products.filter(
+                      (p) =>
+                        p.subcategory === sub &&
+                        (selectedMainCategory === 'Semua' || p.category === selectedMainCategory)
+                    ).length;
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedSubcategory(sub)}
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors ${
+                          selectedSubcategory === sub
+                            ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
+                        }`}
+                      >
+                        {sub} {subCount > 0 ? `(${subCount})` : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Secondary Filter Row: Condition, Expiry, & Location */}
+            <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-100 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[11px] font-medium">Kondisi Stok:</span>
+                <CustomDropdown
+                  options={stockOptions}
+                  value={stockFilter}
+                  onChange={(val) => setStockFilter(val)}
+                  buttonClassName="bg-slate-50 border-slate-200 text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[11px] font-medium">Batas Kadaluarsa:</span>
+                <CustomDropdown
+                  options={expiryOptions}
+                  value={expiryFilter}
+                  onChange={(val) => setExpiryFilter(val)}
+                  buttonClassName="bg-slate-50 border-slate-200 text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[11px] font-medium flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-amber-500" />
+                  <span>Lokasi Gudang:</span>
+                </span>
+                <CustomDropdown
+                  options={locationFilterOptions}
+                  value={selectedLocation}
+                  onChange={(val) => setSelectedLocation(val)}
+                  buttonClassName="bg-slate-50 border-slate-200 text-slate-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Display Products: Grid View OR Table View */}
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProducts.map((p) => {
+                const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
+                const expStatus = getExpiryStatus(p.expiryDate);
+
+                // 4-Level Indicator (Merah, Oren, Kuning, Hijau)
+                let indLevel = 4;
+                let indColor = 'hijau';
+                let indTitle = 'Stok Aman';
+                let indSub = `${p.currentStock} ${p.unit} tersedia`;
+                let indBg = 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                let indDot = 'bg-emerald-500';
+                let indBadge = 'Level: Aman';
+
+                if (p.currentStock <= 0 || expStatus.status === 'expired') {
+                  indLevel = 1;
+                  indColor = 'merah';
+                  indTitle = p.currentStock <= 0 ? 'Stok Habis' : 'Kedaluwarsa';
+                  indSub = p.currentStock <= 0 ? `Sisa 0 ${p.unit}` : expStatus.label;
+                  indBg = 'bg-rose-50 border-rose-200 text-rose-700';
+                  indDot = 'bg-rose-500';
+                  indBadge = 'Level: Kritis';
+                } else if (p.currentStock <= p.minStockAlert || expStatus.status === 'warning') {
+                  indLevel = 2;
+                  indColor = 'oren';
+                  indTitle = p.currentStock <= p.minStockAlert ? 'Stok Menipis' : 'Segera Expired';
+                  indSub = `Sisa ${p.currentStock} ${p.unit} • Alarm: ${p.minStockAlert}`;
+                  indBg = 'bg-amber-50 border-amber-200 text-amber-800';
+                  indDot = 'bg-amber-500';
+                  indBadge = 'Level: Menipis';
+                } else if (expStatus.daysLeft !== null && expStatus.daysLeft <= 30) {
+                  indLevel = 3;
+                  indColor = 'kuning';
+                  indTitle = 'Perhatian Kedaluwarsa';
+                  indSub = `Sisa ${p.currentStock} ${p.unit} • Exp ${expStatus.daysLeft} hr lagi`;
+                  indBg = 'bg-yellow-50 border-yellow-200 text-yellow-800';
+                  indDot = 'bg-yellow-500';
+                  indBadge = 'Level: Perhatian';
+                }
+
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => handleOpenEditModal(p)}
+                    className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-3xl overflow-hidden transition-all duration-150 flex flex-col justify-between group shadow-xs hover:shadow-md cursor-pointer"
+                  >
+                    <div>
+                      {/* Image with Direct Quick Change Overlay - Spacious, Larger, and Uncropped */}
+                      <div className="relative h-64 sm:h-72 w-full bg-slate-50/70 flex items-center justify-center p-5 overflow-hidden border-b border-slate-100">
+                        <img
+                          src={p.imageUrl}
+                          alt={p.name}
+                          className="w-full h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
+                        />
+
+                        {/* Quick Change Photo Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQuickImageTarget(p);
+                          }}
+                          className="absolute top-3 right-3 p-2 rounded-full bg-white/95 hover:bg-white text-slate-700 hover:text-slate-900 backdrop-blur-md border border-slate-200 shadow-sm transition-colors cursor-pointer"
+                          title="Ganti Foto Barang"
+                        >
+                          <Camera className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Product Details & Category Info (Moved to Bottom for High Clarity) */}
+                      <div className="p-5 space-y-3">
+                        {/* Clear Category & Subcategory Badges at the bottom */}
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200/90 shadow-2xs">
+                            {p.category}
+                          </span>
+                          {p.subcategory && (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+                              {p.subcategory}
+                            </span>
+                          )}
+                          {p.batches && p.batches.length > 1 && (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-900 text-white flex items-center gap-1 font-mono shadow-2xs">
+                              <Boxes className="w-2.5 h-2.5" />
+                              <span>{p.batches.length} Batch FEFO</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-bold text-slate-900 text-base leading-snug line-clamp-2 transition-colors">
+                            {p.name}
+                          </h3>
+                        </div>
+
+                        {/* Storage Location Badge */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="truncate">{p.location || 'Gudang Utama'}</span>
+                        </div>
+
+                        {/* Prices */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                           <div>
-                            <div className="font-bold text-white">{p.name}</div>
-                            <div className="text-[10px] font-mono text-[#71717a] flex items-center gap-1.5 mt-0.5">
-                              <span>{p.sku}</span>
-                              <span>•</span>
-                              <span className="text-stone-300 flex items-center gap-0.5">
-                                <MapPin className="w-2.5 h-2.5 text-[#f2aa4b]" />
-                                {p.location || 'Gudang Utama'}
-                              </span>
-                              {p.batches && p.batches.length > 1 && (
-                                <span className="text-[#f2aa4b] font-medium">({p.batches.length} batch FEFO)</span>
-                              )}
+                            <div className="text-[10px] text-slate-400 font-medium">Modal (HPP):</div>
+                            <div className="text-slate-700 font-bold font-mono text-sm">
+                              {formatRupiah(p.hppAmount)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-slate-400 font-medium">Harga Jual:</div>
+                            <div className="text-slate-900 font-extrabold font-mono text-sm">
+                              {formatRupiah(p.sellingPrice)}
                             </div>
                           </div>
                         </div>
-                      </td>
+                      </div>
 
-                      <td className="py-3 px-4">
-                        <div className="text-stone-300">{p.category}</div>
-                        {p.subcategory && (
-                          <div className="text-[10px] text-[#f2aa4b]">{p.subcategory}</div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className={`font-mono font-bold px-2 py-0.5 rounded-full text-[10px] ${
-                            stockStatus.status === 'danger'
-                              ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-                              : stockStatus.status === 'warning'
-                              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
-                              : 'text-stone-300'
-                          }`}
-                        >
-                          {p.currentStock} {p.unit}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        {p.expiryDate ? (
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                              expStatus.status === 'expired'
-                                ? 'bg-rose-500/10 text-rose-300'
-                                : expStatus.status === 'warning'
-                                ? 'bg-amber-500/10 text-amber-300'
-                                : 'text-stone-400'
-                            }`}
-                          >
-                            {formatDateIndo(p.expiryDate)}
+                      {/* Dedicated Bottom Health & Expiry Level Indicator */}
+                      <div className={`mx-5 mb-4 p-3 rounded-2xl border space-y-2 ${indBg}`}>
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <div className="flex items-center gap-1.5 truncate pr-1">
+                            <span className={`w-2 h-2 rounded-full ${indDot} shrink-0 animate-pulse`} />
+                            <span className="font-bold text-slate-900 truncate">{indTitle}</span>
+                            <span className="text-[11px] font-medium opacity-85 truncate">({indSub})</span>
+                          </div>
+                          <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-white/90 border border-current shrink-0">
+                            {indBadge}
                           </span>
-                        ) : (
-                          <span className="text-[#71717a]">-</span>
-                        )}
-                      </td>
+                        </div>
 
-                      <td className="py-3 px-4 text-right font-mono text-stone-300">
-                        {formatRupiah(p.hppAmount)}
-                      </td>
+                        {/* 4-Segment Visual Meter: Merah, Oren, Kuning, Hijau */}
+                        <div className="grid grid-cols-4 gap-1.5 h-2 rounded-full overflow-hidden bg-slate-200/80 p-0.5">
+                          <div
+                            className={`h-full rounded-full transition-colors ${
+                              indLevel >= 1 ? 'bg-rose-500' : 'bg-transparent'
+                            }`}
+                            title="Level 1: Kritis / Habis (Merah)"
+                          />
+                          <div
+                            className={`h-full rounded-full transition-colors ${
+                              indLevel >= 2 ? 'bg-amber-500' : 'bg-transparent'
+                            }`}
+                            title="Level 2: Menipis (Oren)"
+                          />
+                          <div
+                            className={`h-full rounded-full transition-colors ${
+                              indLevel >= 3 ? 'bg-yellow-400' : 'bg-transparent'
+                            }`}
+                            title="Level 3: Perhatian (Kuning)"
+                          />
+                          <div
+                            className={`h-full rounded-full transition-colors ${
+                              indLevel >= 4 ? 'bg-emerald-500' : 'bg-transparent'
+                            }`}
+                            title="Level 4: Aman (Hijau)"
+                          />
+                        </div>
 
-                      <td className="py-3 px-4 text-right font-mono font-bold text-white">
-                        {formatRupiah(p.sellingPrice)}
-                      </td>
+                        {/* Date Tracking Info: Expiry Date & Purchase Date */}
+                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-black/5 font-mono">
+                          <span className="font-semibold text-slate-800">
+                            {p.expiryDate ? `Exp: ${formatDateIndo(p.expiryDate)}` : 'Bebas Kedaluwarsa'}
+                          </span>
+                          {p.purchaseDate && (
+                            <span className="text-slate-500 text-[10px]">
+                              Beli: {formatDateIndo(p.purchaseDate)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                      <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTargetProduct(p)}
-                          className="p-1 rounded text-[#71717a] hover:text-rose-400 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
+                    {/* Card Action Footer */}
+                    <div
+                      className="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[11px] text-slate-500 font-medium">Klik kartu untuk rincian & HPP</span>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTargetProduct(p)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Hapus barang"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View */
+            <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">Barang & SKU</th>
+                      <th className="py-3 px-4">Kategori & Sub</th>
+                      <th className="py-3 px-4 text-center">Stok</th>
+                      <th className="py-3 px-4">Batas Kadaluarsa</th>
+                      <th className="py-3 px-4 text-right">Modal (HPP)</th>
+                      <th className="py-3 px-4 text-right">Harga Jual</th>
+                      <th className="py-3 px-4 text-center">Aksi</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredProducts.map((p) => {
+                      const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
+                      const expStatus = getExpiryStatus(p.expiryDate);
+
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => handleOpenEditModal(p)}
+                          className="hover:bg-slate-50 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={p.imageUrl}
+                                alt={p.name}
+                                className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+                              />
+                              <div>
+                                <div className="font-semibold text-slate-900">{p.name}</div>
+                                <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                  <span>{p.sku}</span>
+                                  <span>•</span>
+                                  <span className="text-slate-600 flex items-center gap-0.5">
+                                    <MapPin className="w-2.5 h-2.5 text-amber-500" />
+                                    {p.location || 'Gudang Utama'}
+                                  </span>
+                                  {p.batches && p.batches.length > 1 && (
+                                    <span className="text-amber-600 font-medium">({p.batches.length} batch FEFO)</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="text-slate-700">{p.category}</div>
+                            {p.subcategory && (
+                              <div className="text-[10px] text-amber-600 font-medium">{p.subcategory}</div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            <span
+                              className={`font-mono font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                                stockStatus.status === 'danger'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : stockStatus.status === 'warning'
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : 'text-slate-700'
+                              }`}
+                            >
+                              {p.currentStock} {p.unit}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {p.expiryDate ? (
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${
+                                  expStatus.status === 'expired'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : expStatus.status === 'warning'
+                                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    : 'text-slate-500'
+                                }`}
+                              >
+                                {formatDateIndo(p.expiryDate)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono text-slate-600">
+                            {formatRupiah(p.hppAmount)}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                            {formatRupiah(p.sellingPrice)}
+                          </td>
+
+                          <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTargetProduct(p)}
+                              className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1247,55 +1266,55 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
         <div className="space-y-6">
           {/* Summary KPI Cards for Mutasi */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-1">
-              <div className="text-[11px] text-[#8a8a92] flex items-center justify-between">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-1 shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium flex items-center justify-between">
                 <span>Total Stok Masuk</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
               </div>
-              <div className="text-xl font-bold text-white font-mono">+{movementSummary.totalInUnits} Unit</div>
-              <div className="text-[10px] text-emerald-400 font-mono">Kulakan: {formatRupiah(movementSummary.totalInAmount)}</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">+{movementSummary.totalInUnits} Unit</div>
+              <div className="text-[10px] text-emerald-600 font-mono">Kulakan: {formatRupiah(movementSummary.totalInAmount)}</div>
             </div>
 
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-1">
-              <div className="text-[11px] text-[#8a8a92] flex items-center justify-between">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-1 shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium flex items-center justify-between">
                 <span>Total Stok Keluar</span>
-                <span className="w-2 h-2 rounded-full bg-[#f2aa4b]" />
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
               </div>
-              <div className="text-xl font-bold text-white font-mono">-{movementSummary.totalOutUnits} Unit</div>
-              <div className="text-[10px] text-[#8a8a92]">Penjualan kasir & pesanan</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">-{movementSummary.totalOutUnits} Unit</div>
+              <div className="text-[10px] text-slate-400">Penjualan kasir & pesanan</div>
             </div>
 
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-1">
-              <div className="text-[11px] text-[#8a8a92] flex items-center justify-between">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-1 shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium flex items-center justify-between">
                 <span>Susut & Basi</span>
-                <span className="w-2 h-2 rounded-full bg-rose-400" />
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
               </div>
-              <div className="text-xl font-bold text-rose-300 font-mono">-{movementSummary.totalWasteUnits} Unit</div>
-              <div className="text-[10px] text-rose-400 font-mono">Kerugian: {formatRupiah(movementSummary.totalWasteAmount)}</div>
+              <div className="text-xl font-bold text-rose-600 font-mono">-{movementSummary.totalWasteUnits} Unit</div>
+              <div className="text-[10px] text-rose-600 font-mono">Kerugian: {formatRupiah(movementSummary.totalWasteAmount)}</div>
             </div>
 
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-1">
-              <div className="text-[11px] text-[#8a8a92] flex items-center justify-between">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-1 shadow-xs">
+              <div className="text-[11px] text-slate-500 font-medium flex items-center justify-between">
                 <span>Total Aktivitas</span>
-                <Clock className="w-3.5 h-3.5 text-stone-400" />
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
               </div>
-              <div className="text-xl font-bold text-white font-mono">{movementSummary.totalLogs} Log</div>
-              <div className="text-[10px] text-[#71717a]">Audit kronologis gudang</div>
+              <div className="text-xl font-bold text-slate-900 font-mono">{movementSummary.totalLogs} Log</div>
+              <div className="text-[10px] text-slate-400">Audit kronologis gudang</div>
             </div>
           </div>
 
           {/* Controls: Search, Type Filter, Category Filter, Location Filter, Add Button */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-4 space-y-3 shadow-lg">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               {/* Search Bar */}
               <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3.5 top-3" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
                   value={movementSearchQuery}
                   onChange={(e) => setMovementSearchQuery(e.target.value)}
                   placeholder="Cari barang, SKU, kode batch (e.g. Batch 24 Okt), sumber, atau catatan..."
-                  className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-full pl-9 pr-4 py-2 text-xs text-white placeholder-[#71717a] focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-full pl-9 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none"
                 />
               </div>
 
@@ -1307,20 +1326,20 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   ]}
                   value={movementCategoryFilter}
                   onChange={(val) => setMovementCategoryFilter(val)}
-                  buttonClassName="bg-[#171719] py-2"
+                  buttonClassName="bg-slate-50 border-slate-200 text-slate-900 py-2"
                 />
 
                 <CustomDropdown
                   options={locationFilterOptions}
                   value={movementLocationFilter}
                   onChange={(val) => setMovementLocationFilter(val)}
-                  buttonClassName="bg-[#171719] py-2"
+                  buttonClassName="bg-slate-50 border-slate-200 text-slate-900 py-2"
                 />
 
                 <button
                   type="button"
                   onClick={() => handleOpenAddMovement()}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow-md active:scale-95"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[3]" />
                   <span>Catat Mutasi Manual</span>
@@ -1343,8 +1362,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   onClick={() => setMovementTypeFilter(chip.id as any)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
                     movementTypeFilter === chip.id
-                      ? 'bg-white text-black shadow-sm font-bold'
-                      : 'bg-[#171719] text-stone-400 hover:text-white border border-[#2c2c32]'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
                   }`}
                 >
                   {chip.label}
@@ -1354,11 +1373,11 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
           </div>
 
           {/* Mutasi Ledger Table */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl overflow-hidden shadow-lg">
+          <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-[#171719] border-b border-[#28282e] text-[#8a8a92] font-semibold uppercase tracking-wider text-[10px]">
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                     <th className="py-3 px-4">Waktu & Sumber</th>
                     <th className="py-3 px-4">Tipe Mutasi</th>
                     <th className="py-3 px-4">Barang & SKU</th>
@@ -1370,10 +1389,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#28282e]">
+                <tbody className="divide-y divide-slate-100">
                   {filteredStockMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-stone-500">
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
                         Tidak ada catatan mutasi stok yang sesuai kriteria pencarian.
                       </td>
                     </tr>
@@ -1383,13 +1402,13 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                       return (
                         <tr
                           key={mov.id}
-                          className="hover:bg-[#202024]/60 transition-colors group cursor-pointer"
+                          className="hover:bg-slate-50 transition-colors group cursor-pointer"
                           onClick={() => handleOpenEditMovement(mov)}
                         >
                           {/* Waktu & Sumber */}
                           <td className="py-3 px-4">
-                            <div className="font-mono text-white text-[11px] font-semibold">{mov.createdAt}</div>
-                            <span className="text-[10px] text-[#8a8a92]">{mov.source || 'Manual'}</span>
+                            <div className="font-mono text-slate-900 text-[11px] font-semibold">{mov.createdAt}</div>
+                            <span className="text-[10px] text-slate-400">{mov.source || 'Manual'}</span>
                           </td>
 
                           {/* Tipe Mutasi */}
@@ -1397,12 +1416,12 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             <span
                               className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-block border ${
                                 mov.type === 'in_purchase'
-                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : mov.type === 'out_sale'
-                                  ? 'bg-amber-500/10 text-[#f2aa4b] border-amber-500/30'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
                                   : mov.type === 'waste'
-                                  ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                                  : 'bg-stone-500/10 text-stone-300 border-stone-500/30'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
                               }`}
                             >
                               {mov.type === 'in_purchase'
@@ -1417,16 +1436,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                           {/* Barang & SKU */}
                           <td className="py-3 px-4">
-                            <div className="font-semibold text-white text-xs">{mov.productName}</div>
-                            <div className="text-[10px] text-[#71717a] font-mono">
+                            <div className="font-semibold text-slate-900 text-xs">{mov.productName}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">
                               {mov.sku} • {mov.category}
                             </div>
                           </td>
 
                           {/* Lokasi Gudang */}
                           <td className="py-3 px-4">
-                            <span className="text-stone-300 text-xs flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-[#f2aa4b]" />
+                            <span className="text-slate-600 text-xs flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-amber-500" />
                               <span>{mov.location || 'Gudang Utama'}</span>
                             </span>
                           </td>
@@ -1436,39 +1455,39 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             <span
                               className={`font-mono font-bold text-xs ${
                                 isPositive
-                                  ? 'text-emerald-400'
+                                  ? 'text-emerald-600'
                                   : mov.type === 'waste'
-                                  ? 'text-rose-400'
-                                  : 'text-[#f2aa4b]'
+                                  ? 'text-rose-600'
+                                  : 'text-amber-800'
                               }`}
                             >
                               {isPositive ? `+${mov.quantityDelta}` : mov.quantityDelta} {mov.unit || 'pcs'}
                             </span>
-                            <div className="text-[10px] text-stone-500 font-mono">
+                            <div className="text-[10px] text-slate-400 font-mono">
                               {mov.stockBefore} → {mov.stockAfter}
                             </div>
                           </td>
 
                           {/* Batch & Expiry */}
                           <td className="py-3 px-4">
-                            <div className="font-mono text-stone-200 text-[11px] font-semibold">
+                            <div className="font-mono text-slate-800 text-[11px] font-semibold">
                               {mov.batchCode || '-'}
                             </div>
                             {mov.batchExpiry && (
-                              <div className="text-[10px] text-amber-300/80">
+                              <div className="text-[10px] text-amber-700 font-medium">
                                 Exp: {formatDateIndo(mov.batchExpiry)}
                               </div>
                             )}
                           </td>
 
                           {/* Nilai Finansial */}
-                          <td className="py-3 px-4 text-right font-mono text-xs font-semibold text-white">
+                          <td className="py-3 px-4 text-right font-mono text-xs font-semibold text-slate-900">
                             {mov.financialAmount && mov.financialAmount > 0 ? formatRupiah(mov.financialAmount) : '-'}
                           </td>
 
                           {/* Catatan */}
                           <td className="py-3 px-4 max-w-[200px]">
-                            <span className="text-stone-400 text-xs line-clamp-2">{mov.notes}</span>
+                            <span className="text-slate-500 text-xs line-clamp-2">{mov.notes}</span>
                           </td>
 
                           {/* Aksi */}
@@ -1477,7 +1496,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditMovement(mov)}
-                                className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-[#28282e] transition-colors"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                                 title="Ubah Catatan Mutasi"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
@@ -1485,7 +1504,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                               <button
                                 type="button"
                                 onClick={() => setDeleteTargetMovement(mov)}
-                                className="p-1.5 rounded-lg text-stone-400 hover:text-rose-400 hover:bg-[#28282e] transition-colors"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                 title="Hapus Mutasi"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1505,29 +1524,29 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* MODAL 1: Tambah Kategori / Sub-Kategori */}
       {isCatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#28282e] pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Tag className="w-4 h-4 text-stone-300" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-slate-700" />
                 <span>
                   {catModalType === 'main'
                     ? 'Tambah Kategori Utama'
                     : 'Tambah Sub-Kategori Baru'}
                 </span>
               </h3>
-              <button onClick={() => setIsCatModalOpen(false)} className="text-stone-400 hover:text-white">
+              <button onClick={() => setIsCatModalOpen(false)} className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center gap-2 p-1 bg-[#171719] rounded-xl border border-[#2c2c32] text-xs">
+              <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs">
                 <button
                   type="button"
                   onClick={() => setCatModalType('main')}
                   className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors ${
-                    catModalType === 'main' ? 'bg-white text-black' : 'text-stone-400 hover:text-white'
+                    catModalType === 'main' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
                   Kategori Utama Universal
@@ -1536,7 +1555,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   type="button"
                   onClick={() => setCatModalType('sub')}
                   className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors ${
-                    catModalType === 'sub' ? 'bg-white text-black' : 'text-stone-400 hover:text-white'
+                    catModalType === 'sub' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
                   Sub-Kategori
@@ -1545,18 +1564,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
               {catModalType === 'sub' && (
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Pilih Kategori Utama Induk</label>
+                  <label className="text-xs text-slate-600 font-semibold">Pilih Kategori Utama Induk</label>
                   <CustomDropdown
                     options={categoryDefinitions.map((c) => ({ value: c.name, label: c.name }))}
                     value={targetMainForSub}
                     onChange={(val) => setTargetMainForSub(val)}
-                    buttonClassName="w-full bg-[#171719]"
+                    buttonClassName="w-full bg-slate-50 border-slate-200 text-slate-900"
                   />
                 </div>
               )}
 
               <div className="space-y-1">
-                <label className="text-xs text-[#8a8a92]">
+                <label className="text-xs text-slate-600 font-semibold">
                   {catModalType === 'main' ? 'Nama Kategori Utama' : 'Nama Sub-Kategori'}
                 </label>
                 <input
@@ -1569,7 +1588,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   }
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
-                  className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                 />
               </div>
             </div>
@@ -1577,7 +1596,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setIsCatModalOpen(false)}
-                className="px-3 py-1.5 rounded-full text-xs text-stone-400 hover:text-white"
+                className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               >
                 Batal
               </button>
@@ -1597,7 +1616,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   }
                 }}
                 disabled={!newCatName.trim()}
-                className="px-4 py-1.5 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-colors"
+                className="px-5 py-2 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-sm"
               >
                 Simpan
               </button>
@@ -1608,38 +1627,38 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* MODAL 2: Ganti Foto Cepat Barang */}
       {quickImageTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#28282e] pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-stone-300" />
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-slate-700" />
                   <span>Ganti Foto: {quickImageTarget.name}</span>
                 </h3>
-                <p className="text-[11px] text-[#8a8a92]">Upload dari perangkat atau pilih foto katalog UMKM</p>
+                <p className="text-[11px] text-slate-500">Upload dari perangkat atau pilih foto katalog UMKM</p>
               </div>
-              <button onClick={() => setQuickImageTarget(null)} className="text-stone-400 hover:text-white">
+              <button onClick={() => setQuickImageTarget(null)} className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Current Preview */}
-            <div className="flex items-center gap-4 p-3 rounded-xl bg-[#171719] border border-[#2c2c32]">
+            <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-200">
               <img
                 src={quickImageTarget.imageUrl}
                 alt="Current Preview"
-                className="w-16 h-16 rounded-lg object-cover border border-[#2c2c32]"
+                className="w-16 h-16 rounded-xl object-cover border border-slate-200"
               />
               <div className="space-y-1">
-                <span className="text-xs font-semibold text-white">Foto Saat Ini</span>
-                <p className="text-[11px] text-[#8a8a92]">Pilih metode ganti foto di bawah ini:</p>
+                <span className="text-xs font-semibold text-slate-900">Foto Saat Ini</span>
+                <p className="text-[11px] text-slate-500">Pilih metode ganti foto di bawah ini:</p>
               </div>
             </div>
 
             {/* File Upload Button */}
-            <label className="border-2 border-dashed border-[#2c2c32] hover:border-white/30 rounded-xl p-4 flex items-center justify-center gap-3 cursor-pointer bg-[#171719] transition-colors group">
-              <Upload className="w-4 h-4 text-stone-400 group-hover:text-white" />
-              <span className="text-xs font-semibold text-stone-200">
+            <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl p-4 flex items-center justify-center gap-3 cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors group">
+              <Upload className="w-4 h-4 text-slate-500 group-hover:text-slate-900" />
+              <span className="text-xs font-semibold text-slate-700">
                 Pilih Berkas Foto dari Komputer / HP
               </span>
               <input
@@ -1652,14 +1671,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
             {/* Direct URL Input */}
             <div className="space-y-1.5">
-              <span className="text-xs font-semibold text-[#8a8a92]">Atau Masukkan Tautan URL Foto:</span>
+              <span className="text-xs font-semibold text-slate-600">Atau Masukkan Tautan URL Foto:</span>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   placeholder="https://..."
                   defaultValue={quickImageTarget.imageUrl}
                   id="direct-quick-image-url"
-                  className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                 />
                 <button
                   type="button"
@@ -1670,18 +1689,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                       setQuickImageTarget(null);
                     }
                   }}
-                  className="px-3 py-2 rounded-xl bg-white text-black text-xs font-bold shrink-0"
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0 shadow-sm hover:bg-slate-800"
                 >
                   Terapkan
                 </button>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-[#28282e]">
+            <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setQuickImageTarget(null)}
-                className="px-4 py-1.5 rounded-full text-xs text-stone-400 hover:text-white"
+                className="px-4 py-1.5 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               >
                 Tutup
               </button>
@@ -1692,27 +1711,27 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* MODAL 3: Tambah / Edit Barang & Kalkulator HPP Persen Lengkap */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-6 py-4 bg-[#171719] border-b border-[#28282e] flex items-center justify-between shrink-0">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Package className="w-4 h-4 text-stone-300" />
-                <span>{editingProductId ? 'Ubah Rincian Barang' : 'Tambah Barang Baru & Kalkulator HPP'}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-5xl xl:max-w-6xl max-h-[94vh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Package className="w-5 h-5 text-slate-700" />
+                <span>{editingProductId ? 'Rincian & Pengaturan Barang' : 'Tambah Barang Baru & Kalkulator HPP'}</span>
               </h2>
-              <button onClick={() => setIsProductModalOpen(false)} className="text-stone-400 hover:text-white">
-                <X className="w-4 h-4" />
+              <button onClick={() => setIsProductModalOpen(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-6 space-y-5 overflow-y-auto">
+            <form onSubmit={handleSaveProduct} className="p-6 sm:p-8 space-y-6 overflow-y-auto">
               {/* Photo Ingestion at the VERY TOP of the Product Form */}
-              <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32] space-y-3">
+              <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-white font-semibold flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-[#f2aa4b]" />
+                  <label className="text-xs text-slate-900 font-semibold flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-amber-500" />
                     <span>Foto Barang Dagangan</span>
                   </label>
-                  <label className="cursor-pointer text-[11px] text-[#f2aa4b] hover:text-white flex items-center gap-1 font-semibold transition-colors">
+                  <label className="cursor-pointer text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1.5 font-bold transition-colors bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
                     <Upload className="w-3.5 h-3.5" />
                     <span>Pilih Foto dari Perangkat (HP / Laptop)</span>
                     <input
@@ -1724,22 +1743,22 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   </label>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#3b3b42] shrink-0 bg-[#121214]">
+                <div className="flex items-center gap-5">
+                  <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-xs p-1 flex items-center justify-center">
                     <img
                       src={formImageUrl}
                       alt="Preview Foto Barang"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   </div>
-                  <div className="flex-1 space-y-1.5">
-                    <label className="text-[11px] text-[#8a8a92]">Atau tautan URL foto gambar:</label>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-xs text-slate-500 font-medium">Atau tempel tautan URL foto gambar:</label>
                     <input
                       type="text"
                       placeholder="https://..."
                       value={formImageUrl}
                       onChange={(e) => setFormImageUrl(e.target.value)}
-                      className="w-full bg-[#121214] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                      className="w-full bg-white border border-slate-200 focus:border-slate-900 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -1747,97 +1766,129 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Product Name */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs text-stone-300 font-semibold">Nama Barang Dagangan</label>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs text-slate-700 font-semibold">Nama Barang Dagangan</label>
                   <input
                     type="text"
                     required
-                    placeholder="Contoh: Daging Ayam Segar / Es Kopi Susu Aren"
+                    placeholder="Contoh: Tepung Segitiga Biru / Daging Ayam Segar"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 {/* Main Category */}
-                <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Kategori Utama Universal</label>
-                  <CustomDropdown
-                    options={categoryDefinitions.map((c) => ({ value: c.name, label: c.name }))}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-600 font-semibold">Kategori Utama Universal</label>
+                  <input
+                    type="text"
+                    placeholder="Pilih dari opsi di bawah atau ketik kategori baru..."
                     value={formCategory}
-                    onChange={(val) => {
-                      setFormCategory(val);
-                      const matched = categoryDefinitions.find(
-                        (c) => c.name.toLowerCase() === val.toLowerCase()
-                      );
-                      setFormSubcategory(matched?.subcategories[0] || '');
-                    }}
-                    className="w-full"
-                    buttonClassName="w-full bg-[#171719] py-2"
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {categoryDefinitions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setFormCategory(c.name);
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
+                          formCategory === c.name
+                            ? 'bg-slate-900 text-white font-bold border-slate-900'
+                            : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Sub-Category */}
-                <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Sub-Kategori Spesifik</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-600 font-semibold">Sub-Kategori Spesifik</label>
                   <input
                     type="text"
-                    placeholder="Contoh: Ayam & Daging, Sayur, Kopi..."
+                    placeholder="Contoh: Tepung, Bumbu, Sayur, Kopi..."
                     value={formSubcategory}
                     onChange={(e) => setFormSubcategory(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
+                  {availableSubcategoriesForForm.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {availableSubcategoriesForForm.map((sub, sidx) => (
+                        <button
+                          key={sidx}
+                          type="button"
+                          onClick={() => setFormSubcategory(sub)}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
+                            formSubcategory === sub
+                              ? 'bg-amber-100 text-amber-900 font-bold border-amber-300'
+                              : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Unit */}
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Satuan Unit</label>
+                  <label className="text-xs text-slate-600 font-semibold">Satuan Unit</label>
                   <input
                     type="text"
-                    placeholder="pcs, ekor, kg, liter, cup, porsi, bal"
+                    placeholder="Contoh: pcs, kg, porsi, ekor, dus, liter"
                     value={formUnit}
                     onChange={(e) => setFormUnit(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 {/* Current Stock */}
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Jumlah Stok Sekarang</label>
+                  <label className="text-xs text-slate-600 font-semibold">Jumlah Stok Sekarang</label>
                   <input
                     type="number"
+                    placeholder="Contoh: 10"
                     value={formCurrentStock}
                     onChange={(e) => setFormCurrentStock(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white font-semibold font-mono focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold font-mono focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 {/* Min Stock Alert */}
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Batas Alarm Stok Menipis</label>
+                  <label className="text-xs text-slate-600 font-semibold">Batas Alarm Stok Menipis</label>
                   <input
                     type="number"
+                    placeholder="Contoh: 5"
                     value={formMinStock}
                     onChange={(e) => setFormMinStock(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 {/* Storage Location */}
                 <div className="space-y-1 sm:col-span-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs text-[#8a8a92] flex items-center gap-1 font-semibold">
-                      <MapPin className="w-3.5 h-3.5 text-[#f2aa4b]" />
+                    <label className="text-xs text-slate-600 flex items-center gap-1 font-semibold">
+                      <MapPin className="w-3.5 h-3.5 text-amber-500" />
                       <span>Lokasi Penyimpanan Gudang</span>
                     </label>
-                    <span className="text-[10px] text-[#71717a]">Pilih preset atau ketik manual</span>
+                    <span className="text-[10px] text-slate-400">Pilih preset atau ketik manual</span>
                   </div>
                   <input
                     type="text"
                     placeholder="Contoh: Freezer Daging #1, Chiller Depan, Rak Kering A1..."
                     value={formLocation}
                     onChange={(e) => setFormLocation(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none pt-1">
                     {LOCATION_PRESETS.map((loc) => (
@@ -1845,10 +1896,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                         key={loc}
                         type="button"
                         onClick={() => setFormLocation(loc)}
-                        className={`px-2.5 py-0.5 rounded-md text-[10px] transition-colors shrink-0 ${
+                        className={`px-2.5 py-0.5 rounded-md text-[10px] transition-colors shrink-0 cursor-pointer ${
                           formLocation === loc
-                            ? 'bg-white text-black font-bold'
-                            : 'bg-[#171719] text-stone-300 hover:text-white border border-[#2c2c32]'
+                            ? 'bg-slate-900 text-white font-bold shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
                         }`}
                       >
                         {loc}
@@ -1859,31 +1910,31 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                 {/* Purchase Date with Full Clickability AccessibleDatePicker */}
                 <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs text-[#8a8a92] font-semibold">
+                  <label className="text-xs text-slate-600 font-semibold">
                     Tanggal Beli / Kulakan (Klik di mana saja pada tombol untuk ubah tanggal)
                   </label>
                   <AccessibleDatePicker
                     value={formPurchaseDate}
-                    onChange={(val) => setFormPurchaseDate(val || new Date().toISOString().split('T')[0])}
+                    onChange={(val) => setFormPurchaseDate(val)}
                     presetMode="purchase"
                     label="Pilih Tanggal Beli..."
                   />
                 </div>
 
                 {/* Batches & Expiry (FEFO) */}
-                <div className="space-y-2 sm:col-span-2 p-3.5 rounded-xl bg-[#171719] border border-[#2c2c32]">
+                <div className="space-y-2 sm:col-span-2 p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <Boxes className="w-4 h-4 text-[#f2aa4b]" />
+                      <Boxes className="w-4 h-4 text-amber-500" />
                       <div>
-                        <h4 className="text-xs font-bold text-white">Batas Kedaluwarsa Terpisah per Inputan (FEFO)</h4>
-                        <p className="text-[10px] text-[#8a8a92]">Tiap batch input stok baru bisa punya tanggal kadaluarsa dan sisa stok berbeda</p>
+                        <h4 className="text-xs font-bold text-slate-900">Batas Kedaluwarsa Terpisah per Inputan (FEFO)</h4>
+                        <p className="text-[10px] text-slate-500">Tiap batch input stok baru bisa punya tanggal kadaluarsa dan sisa stok berbeda</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowAddBatchRow(!showAddBatchRow)}
-                      className="px-2.5 py-1 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-[11px] text-stone-200 border border-[#3b3b42] flex items-center gap-1 transition-colors"
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-[11px] text-slate-700 border border-slate-200 shadow-xs font-semibold flex items-center gap-1 transition-colors"
                     >
                       <Plus className="w-3 h-3" />
                       <span>{showAddBatchRow ? 'Batal' : 'Input Batch Baru'}</span>
@@ -1892,54 +1943,76 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                   {/* Active Batches List */}
                   {formBatches.length > 0 ? (
-                    <div className="space-y-1.5 pt-1">
+                    <div className="space-y-2 pt-1">
                       {formBatches.map((batch, idx) => {
                         const batchExpStatus = getExpiryStatus(batch.expiryDate);
                         return (
                           <div
                             key={batch.id || idx}
-                            className="p-2.5 rounded-lg bg-[#1c1c1f] border border-[#2c2c32] flex items-center justify-between text-xs gap-3"
+                            className="p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between text-xs gap-2.5"
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-stone-400 bg-[#121214] px-1.5 py-0.5 rounded border border-[#28282e]">
-                                {batch.batchCode || `BATCH-${idx + 1}`}
-                              </span>
-                              <div>
-                                <span className="font-bold text-white font-mono">{batch.quantity} {formUnit}</span>
-                                <span className="text-[10px] text-[#71717a] ml-2">Masuk: {formatDateIndo(batch.receivedDate)}</span>
+                            <div className="flex items-center gap-2 flex-1">
+                              <input
+                                type="text"
+                                value={batch.batchCode || ''}
+                                onChange={(e) => handleUpdateBatch(idx, { batchCode: e.target.value })}
+                                placeholder={`Batch ${formatDateIndo(batch.receivedDate)}`}
+                                className="text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 flex-1 min-w-[140px]"
+                                title="Klik untuk ubah nama/tanggal batch"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={batch.quantity}
+                                  onChange={(e) => handleUpdateBatch(idx, { quantity: Math.max(0, parseInt(e.target.value) || 0) })}
+                                  className="w-16 bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2 py-1.5 text-xs text-slate-900 font-bold font-mono text-right"
+                                  title="Jumlah stok batch ini"
+                                />
+                                <span className="text-[11px] text-slate-500 font-mono">{formUnit || 'pcs'}</span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="min-w-[160px]">
+                                <AccessibleDatePicker
+                                  value={batch.expiryDate}
+                                  onChange={(val) => handleUpdateBatch(idx, { expiryDate: val || null })}
+                                  presetMode="expiry"
+                                  label="Tanggal Exp..."
+                                />
+                              </div>
+
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap border ${
                                   batchExpStatus.status === 'expired'
-                                    ? 'bg-rose-500/20 text-rose-300'
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
                                     : batchExpStatus.status === 'warning'
-                                    ? 'bg-amber-500/20 text-amber-300'
-                                    : 'bg-stone-800 text-stone-300'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 }`}
                               >
-                                Exp: {batch.expiryDate ? formatDateIndo(batch.expiryDate) : 'Tidak ada'}
+                                {batchExpStatus.label}
                               </span>
 
-                              {formBatches.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setFormBatches(formBatches.filter((_, bIdx) => bIdx !== idx))}
-                                  className="text-[#71717a] hover:text-rose-400 p-0.5"
-                                  title="Hapus batch ini"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBatch(idx)}
+                                className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                                title="Hapus batch ini"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="pt-1">
+                    <div className="pt-1 space-y-1">
+                      <label className="text-[11px] text-slate-500">
+                        Tanggal Kedaluwarsa Produk (Atau klik "+ Input Batch Baru" di atas untuk multi-batch):
+                      </label>
                       <AccessibleDatePicker
                         value={formExpiryDate}
                         onChange={(val) => setFormExpiryDate(val)}
@@ -1951,46 +2024,64 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                   {/* Add New Batch Form */}
                   {showAddBatchRow && (
-                    <div className="p-3 rounded-lg bg-[#121214] border border-[#3b3b42] space-y-2 mt-2">
-                      <div className="text-[11px] font-bold text-white flex items-center gap-1">
-                        <Plus className="w-3 h-3 text-[#f2aa4b]" />
-                        <span>Tambah Stok Batch Input Baru:</span>
+                    <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-3 mt-2 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Plus className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Tambah Stok Batch Input Baru:</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddBatchRow(false)}
+                          className="text-[11px] text-slate-400 hover:text-slate-600"
+                        >
+                          Tutup
+                        </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div>
-                          <label className="text-[10px] text-[#8a8a92]">Jumlah Stok Tambahan ({formUnit})</label>
+                          <label className="text-[11px] text-slate-600 font-medium block mb-1">
+                            Jumlah Stok Tambahan ({formUnit || 'pcs'})
+                          </label>
                           <input
                             type="number"
+                            min="1"
+                            placeholder="Contoh: 10"
                             value={newBatchQty}
                             onChange={(e) => setNewBatchQty(e.target.value)}
-                            className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded px-2 py-1 text-xs text-white font-mono"
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono font-bold"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-[#8a8a92]">Kode Batch (Opsional)</label>
+                          <label className="text-[11px] text-slate-600 font-medium block mb-1">
+                            Nama / Tanggal Batch (Opsional)
+                          </label>
                           <input
                             type="text"
                             placeholder={`Contoh: ${formatBatchName(new Date().toISOString().split('T')[0])}`}
                             value={newBatchCode}
                             onChange={(e) => setNewBatchCode(e.target.value)}
-                            className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded px-2 py-1 text-xs text-white"
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
                           />
                         </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[#8a8a92] block mb-1">Tanggal Kedaluwarsa Batch Ini:</label>
-                        <AccessibleDatePicker
-                          value={newBatchExpiry}
-                          onChange={(val) => setNewBatchExpiry(val)}
-                          presetMode="expiry"
-                          label="Pilih Tanggal Exp Batch Baru..."
-                        />
+                        <div className="sm:col-span-2">
+                          <label className="text-[11px] text-slate-600 font-medium block mb-1">
+                            Tanggal Kedaluwarsa Batch Ini:
+                          </label>
+                          <AccessibleDatePicker
+                            value={newBatchExpiry}
+                            onChange={(val) => setNewBatchExpiry(val)}
+                            presetMode="expiry"
+                            label="Pilih Tanggal Exp Batch Baru..."
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-end pt-1">
                         <button
                           type="button"
                           onClick={() => {
-                            const qty = Math.max(1, parseInt(newBatchQty) || 0);
+                            const qty = parseInt(newBatchQty) || 0;
+                            if (qty <= 0) return;
                             const todayStr = new Date().toISOString().split('T')[0];
                             const newBatch: StockBatch = {
                               id: `batch-${Date.now()}`,
@@ -2000,14 +2091,17 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                               costPerUnit: computedHpp,
                               batchCode: newBatchCode.trim() || formatBatchName(todayStr),
                             };
-                            setFormBatches([...formBatches, newBatch]);
-                            setFormCurrentStock((parseInt(formCurrentStock) + qty).toString());
+                            const updated = [...formBatches, newBatch];
+                            setFormBatches(updated);
+                            const total = updated.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+                            setFormCurrentStock(total.toString());
                             setShowAddBatchRow(false);
-                            setNewBatchQty('10');
+                            setNewBatchQty('');
                             setNewBatchExpiry(null);
                             setNewBatchCode('');
                           }}
-                          className="px-3 py-1 rounded bg-white text-black font-bold text-xs"
+                          disabled={!newBatchQty || parseInt(newBatchQty) <= 0}
+                          className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-all"
                         >
                           Simpan Batch Ini
                         </button>
@@ -2018,28 +2112,28 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               </div>
 
               {/* HPP Calculator & Margin Slider Section */}
-              <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32] space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-stone-300" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                    <DollarSign className="w-4 h-4 text-slate-700" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                       Kalkulator HPP & Penetapan Margin Keuntungan
                     </h3>
                   </div>
-                  <span className="text-xs text-[#8a8a92] font-semibold">
-                    HPP Bersih: <span className="text-white font-bold font-mono">{formatRupiah(computedHpp)}</span>
+                  <span className="text-xs text-slate-500 font-semibold">
+                    HPP Bersih: <span className="text-slate-900 font-bold font-mono">{formatRupiah(computedHpp)}</span>
                   </span>
                 </div>
 
                 {/* Method Tabs */}
-                <div className="grid grid-cols-3 gap-1 p-1 bg-[#1c1c1f] rounded-xl border border-[#2c2c32] text-xs font-medium">
+                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-medium">
                   <button
                     type="button"
                     onClick={() => setHppMethod('wholesale')}
                     className={`py-1.5 rounded-lg transition-colors ${
                       hppMethod === 'wholesale'
-                        ? 'bg-white text-black font-bold shadow'
-                        : 'text-stone-400 hover:text-white'
+                        ? 'bg-white text-slate-900 font-bold shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
                     Bagi Grosir/Dus
@@ -2049,8 +2143,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     onClick={() => setHppMethod('recipe')}
                     className={`py-1.5 rounded-lg transition-colors ${
                       hppMethod === 'recipe'
-                        ? 'bg-white text-black font-bold shadow'
-                        : 'text-stone-400 hover:text-white'
+                        ? 'bg-white text-slate-900 font-bold shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
                     Resep & Kemasan
@@ -2060,8 +2154,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     onClick={() => setHppMethod('manual')}
                     className={`py-1.5 rounded-lg transition-colors ${
                       hppMethod === 'manual'
-                        ? 'bg-white text-black font-bold shadow'
-                        : 'text-stone-400 hover:text-white'
+                        ? 'bg-white text-slate-900 font-bold shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
                     Input Bebas
@@ -2073,60 +2167,64 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   <div className="space-y-3 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] text-[#8a8a92]">Harga Beli 1 Dus / Karton (Rp)</label>
+                        <label className="text-[11px] text-slate-500">Harga Beli 1 Dus / Karton (Rp)</label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={wholesaleTotalCost}
-                          onChange={(e) => setWholesaleTotalCost(e.target.value)}
-                          placeholder="Contoh: 180000"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          onChange={(e) => setWholesaleTotalCost(formatThousands(e.target.value))}
+                          placeholder="Contoh: 180.000"
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-[#8a8a92]">Jumlah Isi Satuan per Dus ({formUnit})</label>
+                        <label className="text-[11px] text-slate-500">Jumlah Isi Satuan per Dus ({formUnit || 'pcs'})</label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={wholesaleUnitsCount}
-                          onChange={(e) => setWholesaleUnitsCount(e.target.value)}
+                          onChange={(e) => setWholesaleUnitsCount(formatThousands(e.target.value))}
                           placeholder="Contoh: 12"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-[#8a8a92] flex items-center gap-1">
-                          <Truck className="w-3 h-3 text-[#f2aa4b]" />
+                        <label className="text-[11px] text-slate-500 flex items-center gap-1">
+                          <Truck className="w-3 h-3 text-amber-500" />
                           <span>Ongkir / Ekspedisi per Dus (Rp)</span>
                         </label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={wholesaleShipping}
-                          onChange={(e) => setWholesaleShipping(e.target.value)}
-                          placeholder="Contoh: 10000"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          onChange={(e) => setWholesaleShipping(formatThousands(e.target.value))}
+                          placeholder="Contoh: 10.000"
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-[#8a8a92]">Estimasi Susut / Kerusakan (%)</label>
+                        <label className="text-[11px] text-slate-500">Estimasi Susut / Kerusakan (%)</label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={wholesaleWastePercent}
-                          onChange={(e) => setWholesaleWastePercent(e.target.value)}
+                          onChange={(e) => setWholesaleWastePercent(e.target.value.replace(/[^0-9.]/g, ''))}
                           placeholder="Contoh: 2"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-mono"
                         />
                       </div>
                     </div>
 
                     {/* Transparent Formula Breakdown Card */}
-                    <div className="p-3 rounded-lg bg-[#141416] border border-[#28282e] space-y-1.5">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5 shadow-xs">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-stone-300 font-semibold">Rumus Transparan: (Harga Dus + Ongkir) ÷ Isi × (1 + Susut%)</span>
-                        <span className="text-[#f2aa4b] font-bold font-mono">= {formatRupiah(computedHpp)}/{formUnit}</span>
+                        <span className="text-slate-700 font-semibold">Rumus Transparan: (Harga Dus + Ongkir) ÷ Isi × (1 + Susut%)</span>
+                        <span className="text-amber-600 font-bold font-mono">= {formatRupiah(computedHpp)}/{formUnit || 'pcs'}</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-[10px] text-[#8a8a92] pt-1 border-t border-[#222226]">
-                        <div>Modal Dasar: <span className="text-white font-mono">{formatRupiah(Math.round((parseFloat(wholesaleTotalCost) || 0) / (parseFloat(wholesaleUnitsCount) || 1)))}</span></div>
-                        <div>Beban Ongkir: <span className="text-white font-mono">+{formatRupiah(Math.round((parseFloat(wholesaleShipping) || 0) / (parseFloat(wholesaleUnitsCount) || 1)))}</span></div>
-                        <div>Cadangan Susut: <span className="text-white font-mono">+{wholesaleWastePercent}%</span></div>
+                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                        <div>Modal Dasar: <span className="text-slate-900 font-mono">{formatRupiah(Math.round((parseThousands(wholesaleTotalCost) || 0) / (parseThousands(wholesaleUnitsCount) || 1)))}</span></div>
+                        <div>Beban Ongkir: <span className="text-slate-900 font-mono">+{formatRupiah(Math.round((parseThousands(wholesaleShipping) || 0) / (parseThousands(wholesaleUnitsCount) || 1)))}</span></div>
+                        <div>Cadangan Susut: <span className="text-slate-900 font-mono">+{wholesaleWastePercent || 0}%</span></div>
                       </div>
                     </div>
                   </div>
@@ -2136,7 +2234,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 {hppMethod === 'recipe' && (
                   <div className="space-y-3 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-[#8a8a92] block">
+                      <span className="text-[11px] text-slate-500 block">
                         Rincian Komponen Bahan & Kemasan per Porsi ({recipeComponents.length} Komponen):
                       </span>
                     </div>
@@ -2151,38 +2249,39 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             <input
                               type="text"
                               value={item.name}
+                              placeholder="Nama komponen..."
                               onChange={(e) => {
                                 const copy = [...recipeComponents];
                                 copy[idx].name = e.target.value;
                                 setRecipeComponents(copy);
                               }}
-                              className="flex-1 bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded px-2.5 py-1.5 text-xs text-white"
+                              className="flex-1 bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
                             />
-                            <div className="relative w-28">
-                              <span className="absolute left-2 top-1.5 text-[10px] text-[#71717a] font-mono">Rp</span>
+                            <div className="relative w-32">
+                              <span className="absolute left-2 top-1.5 text-[10px] text-slate-400 font-mono">Rp</span>
                               <input
-                                type="number"
-                                value={item.cost}
+                                type="text"
+                                inputMode="numeric"
+                                value={formatThousands(item.cost)}
                                 onChange={(e) => {
                                   const copy = [...recipeComponents];
-                                  copy[idx].cost = Number(e.target.value) || 0;
+                                  copy[idx].cost = parseThousands(e.target.value);
                                   setRecipeComponents(copy);
                                 }}
-                                className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded pl-7 pr-2 py-1.5 text-xs text-white text-right font-semibold font-mono"
+                                className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg pl-7 pr-2 py-1.5 text-xs text-slate-900 text-right font-semibold font-mono"
                               />
                             </div>
-                            <span className="w-12 text-right font-mono text-[10px] text-stone-400">
+                            <span className="w-12 text-right font-mono text-[10px] text-slate-500">
                               {percentage}%
                             </span>
-                            {recipeComponents.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setRecipeComponents(recipeComponents.filter((_, cIdx) => cIdx !== idx))}
-                                className="text-[#71717a] hover:text-rose-400 p-1"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => setRecipeComponents(recipeComponents.filter((_, cIdx) => cIdx !== idx))}
+                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                              title="Hapus komponen ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         );
                       })}
@@ -2195,47 +2294,53 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                         placeholder="+ Nama bahan / bumbu / kemasan baru..."
                         value={newCompName}
                         onChange={(e) => setNewCompName(e.target.value)}
-                        className="flex-1 bg-[#141416] border border-[#2c2c32] rounded px-2.5 py-1.5 text-xs text-white"
+                        className="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
                       />
-                      <input
-                        type="number"
-                        placeholder="Biaya (Rp)"
-                        value={newCompCost}
-                        onChange={(e) => setNewCompCost(e.target.value)}
-                        className="w-28 bg-[#141416] border border-[#2c2c32] rounded px-2.5 py-1.5 text-xs text-white font-mono"
-                      />
+                      <div className="relative w-32">
+                        <span className="absolute left-2 top-1.5 text-[10px] text-slate-400 font-mono">Rp</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={newCompCost}
+                          onChange={(e) => setNewCompCost(formatThousands(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs text-slate-900 font-mono text-right"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
-                          if (newCompName.trim() && parseFloat(newCompCost) > 0) {
+                          if (newCompName.trim() && parseThousands(newCompCost) > 0) {
                             setRecipeComponents([
                               ...recipeComponents,
                               {
                                 id: `comp-${Date.now()}`,
                                 name: newCompName.trim(),
-                                cost: parseFloat(newCompCost) || 0,
+                                cost: parseThousands(newCompCost),
                               },
                             ]);
                             setNewCompName('');
                             setNewCompCost('');
                           }
                         }}
-                        className="px-3 py-1.5 rounded bg-[#242428] hover:bg-white hover:text-black text-stone-200 text-xs font-semibold border border-[#3b3b42] transition-colors shrink-0"
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 transition-colors shrink-0"
                       >
                         Tambah Komponen
                       </button>
                     </div>
 
                     {/* Overhead per Portion */}
-                    <div className="pt-2 border-t border-[#28282e] flex items-center justify-between">
-                      <span className="text-[11px] text-[#8a8a92]">Biaya Tenaga Kerja / Listrik / Overhead per Porsi:</span>
-                      <div className="relative w-28">
-                        <span className="absolute left-2 top-1.5 text-[10px] text-[#71717a] font-mono">Rp</span>
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500">Biaya Tenaga Kerja / Listrik / Overhead per Porsi:</span>
+                      <div className="relative w-32">
+                        <span className="absolute left-2 top-1.5 text-[10px] text-slate-400 font-mono">Rp</span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={recipeOverhead}
-                          onChange={(e) => setRecipeOverhead(e.target.value)}
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded pl-7 pr-2 py-1 text-xs text-white text-right font-mono"
+                          onChange={(e) => setRecipeOverhead(formatThousands(e.target.value))}
+                          placeholder="0"
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg pl-7 pr-2 py-1 text-xs text-slate-900 text-right font-mono"
                         />
                       </div>
                     </div>
@@ -2246,35 +2351,36 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 {hppMethod === 'manual' && (
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="text-[11px] text-[#8a8a92]">Nominal HPP per Satuan ({formUnit})</label>
+                      <label className="text-[11px] text-slate-500">Nominal HPP per Satuan ({formUnit || 'pcs'})</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         value={manualHpp}
-                        onChange={(e) => setManualHpp(e.target.value)}
-                        placeholder="Contoh: 15000"
-                        className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-lg px-2.5 py-1.5 text-xs text-white font-semibold font-mono"
+                        onChange={(e) => setManualHpp(formatThousands(e.target.value))}
+                        placeholder="Contoh: 15.000"
+                        className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-semibold font-mono"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[11px] text-[#8a8a92]">Nama Supplier / Toko Kulakan</label>
+                        <label className="text-[11px] text-slate-500">Nama Supplier / Toko Kulakan</label>
                         <input
                           type="text"
                           value={supplierName}
                           onChange={(e) => setSupplierName(e.target.value)}
                           placeholder="Contoh: Agen Pasar Induk, Toko Jaya Abadi"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded-lg px-2.5 py-1.5 text-xs text-white"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-[#8a8a92]">Termin & Catatan Pembelian</label>
+                        <label className="text-[11px] text-slate-500">Termin & Catatan Pembelian</label>
                         <input
                           type="text"
                           value={supplierNotes}
                           onChange={(e) => setSupplierNotes(e.target.value)}
                           placeholder="Contoh: Tunai diskon 2%, Tempo 7 hari"
-                          className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded-lg px-2.5 py-1.5 text-xs text-white"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
                         />
                       </div>
                     </div>
@@ -2282,26 +2388,26 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 )}
 
                 {/* Interactive Profit Margin Slider (%) */}
-                <div className="p-3.5 rounded-xl bg-[#121214] border border-[#2c2c32] space-y-3">
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Percent className="w-3.5 h-3.5 text-[#f2aa4b]" />
-                      <span className="text-xs font-bold text-white">
+                      <Percent className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="text-xs font-bold text-slate-900">
                         Slider Margin Untung (%):
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold font-mono text-white">
+                      <span className="text-sm font-bold font-mono text-slate-900">
                         {profitMarginPercent}%
                       </span>
                       <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border ${
                           profitMarginPercent >= 35
-                            ? 'bg-emerald-500/20 text-emerald-300'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : profitMarginPercent >= 20
-                            ? 'bg-[#f2aa4b]/20 text-[#f2aa4b]'
-                            : 'bg-rose-500/20 text-rose-300'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}
                       >
                         {profitMarginPercent >= 35
@@ -2321,7 +2427,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     step="5"
                     value={profitMarginPercent}
                     onChange={(e) => handleMarginSliderChange(parseInt(e.target.value) || 0)}
-                    className="w-full accent-[#f2aa4b] cursor-pointer"
+                    className="w-full accent-amber-500 cursor-pointer"
                   />
 
                   {/* Quick Preset Buttons */}
@@ -2333,8 +2439,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                         onClick={() => handleMarginSliderChange(preset)}
                         className={`flex-1 py-1 rounded-lg text-center transition-colors font-mono ${
                           profitMarginPercent === preset
-                            ? 'bg-white text-black font-bold'
-                            : 'bg-[#1c1c1f] text-stone-300 hover:text-white border border-[#2c2c32]'
+                            ? 'bg-slate-900 text-white font-bold shadow-xs'
+                            : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
                         }`}
                       >
                         +{preset}%
@@ -2343,25 +2449,27 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   </div>
 
                   {/* Untung Bersih Nominal Preview */}
-                  <div className="pt-2 border-t border-[#242428] flex items-center justify-between text-xs">
-                    <span className="text-stone-400">Rekomendasi Laba Bersih per {formUnit}:</span>
-                    <span className="font-mono font-bold text-white">
-                      +{formatRupiah(Math.max(0, (parseInt(formSellingPrice) || 0) - computedHpp))}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Rekomendasi Laba Bersih per {formUnit || 'pcs'}:</span>
+                    <span className="font-mono font-bold text-emerald-600">
+                      +{formatRupiah(Math.max(0, parseThousands(formSellingPrice) - computedHpp))}
                     </span>
                   </div>
                 </div>
 
                 {/* Final Selling Price Input */}
                 <div className="space-y-1 pt-1">
-                  <label className="text-xs text-white font-semibold">Harga Jual Akhir</label>
+                  <label className="text-xs text-slate-900 font-semibold">Harga Jual Akhir</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-2 text-xs text-[#71717a] font-mono">Rp</span>
+                    <span className="absolute left-3 top-2 text-xs text-slate-400 font-mono">Rp</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       required
                       value={formSellingPrice}
                       onChange={(e) => handleSellingPriceInputChange(e.target.value)}
-                      className="w-full bg-[#1c1c1f] border border-[#2c2c32] focus:border-white/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white font-bold font-mono focus:outline-none"
+                      placeholder="Contoh: 14.000"
+                      className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 font-bold font-mono focus:outline-none"
                     />
                   </div>
                 </div>
@@ -2371,13 +2479,13 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 <button
                   type="button"
                   onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2 rounded-full text-xs text-stone-400 hover:text-white"
+                  className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow-md active:scale-95"
+                  className="px-5 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
                 >
                   {editingProductId ? 'Simpan Perubahan' : 'Masukkan ke Gudang'}
                 </button>
@@ -2389,14 +2497,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* MODAL 4: Catat / Edit Mutasi Manual (Kasir Versi Gudang) */}
       {isMovementModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl w-full max-w-xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-6 py-4 bg-[#171719] border-b border-[#28282e] flex items-center justify-between shrink-0">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#f2aa4b]" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-500" />
                 <span>{editingMovement ? 'Ubah Catatan Mutasi Gudang' : 'Catat Mutasi Stok Gudang (Kasir Gudang)'}</span>
               </h2>
-              <button onClick={() => setIsMovementModalOpen(false)} className="text-stone-400 hover:text-white">
+              <button onClick={() => setIsMovementModalOpen(false)} className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2404,7 +2512,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             <form onSubmit={handleSaveMovement} className="p-6 space-y-4 overflow-y-auto">
               {/* Product Selection */}
               <div className="space-y-1">
-                <label className="text-xs text-stone-300 font-semibold">Pilih Barang yang Mengalami Mutasi</label>
+                <label className="text-xs text-slate-700 font-semibold">Pilih Barang yang Mengalami Mutasi</label>
                 <CustomDropdown
                   options={products.map((p) => ({
                     value: p.id,
@@ -2420,14 +2528,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     }
                   }}
                   className="w-full"
-                  buttonClassName="w-full bg-[#171719] py-2"
+                  buttonClassName="w-full bg-slate-50 border-slate-200 text-slate-900 py-2"
                 />
               </div>
 
               {/* Mutation Type */}
               <div className="space-y-1">
-                <label className="text-xs text-stone-300 font-semibold">Tipe Mutasi Stok</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#171719] rounded-xl border border-[#2c2c32]">
+                <label className="text-xs text-slate-700 font-semibold">Tipe Mutasi Stok</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
                   {[
                     { id: 'in_purchase', label: 'Masuk (Kulakan)' },
                     { id: 'out_sale', label: 'Keluar (Penjualan)' },
@@ -2440,8 +2548,8 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                       onClick={() => setMovType(t.id as any)}
                       className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                         movType === t.id
-                          ? 'bg-white text-black font-bold shadow'
-                          : 'text-stone-400 hover:text-white'
+                          ? 'bg-white text-slate-900 font-bold shadow-xs'
+                          : 'text-slate-500 hover:text-slate-900'
                       }`}
                     >
                       {t.label}
@@ -2453,19 +2561,19 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               {/* Quantity & Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Jumlah Mutasi Unit</label>
+                  <label className="text-xs text-slate-600 font-semibold">Jumlah Mutasi Unit</label>
                   <input
                     type="number"
                     min="1"
                     required
                     value={movQty}
                     onChange={(e) => setMovQty(e.target.value)}
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Tanggal Mutasi</label>
+                  <label className="text-xs text-slate-600 font-semibold">Tanggal Mutasi</label>
                   <AccessibleDatePicker
                     value={movDate}
                     onChange={(val) => setMovDate(val || new Date().toISOString().split('T')[0])}
@@ -2476,26 +2584,26 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               </div>
 
               {/* Batch Code & Batch Expiry (FEFO tracking) */}
-              <div className="p-3.5 rounded-xl bg-[#171719] border border-[#2c2c32] space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                  <Boxes className="w-3.5 h-3.5 text-[#f2aa4b]" />
+              <div className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                  <Boxes className="w-3.5 h-3.5 text-amber-500" />
                   <span>Pelacak Batch & Masa Simpan (FEFO)</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-[#8a8a92]">Format Batch (Misal: Batch 24 Oktober 2026)</label>
+                    <label className="text-[10px] text-slate-500">Format Batch (Misal: Batch 24 Oktober 2026)</label>
                     <input
                       type="text"
                       placeholder={`Contoh: ${formatBatchName(movDate)}`}
                       value={movBatchCode}
                       onChange={(e) => setMovBatchCode(e.target.value)}
-                      className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded-xl px-3 py-2 text-xs text-white"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-[#8a8a92]">Batas Kadaluarsa Batch (Opsional)</label>
+                    <label className="text-[10px] text-slate-500">Batas Kadaluarsa Batch (Opsional)</label>
                     <AccessibleDatePicker
                       value={movBatchExpiry}
                       onChange={(val) => setMovBatchExpiry(val)}
@@ -2509,26 +2617,28 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               {/* Financial Nominal & Location */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Nilai Finansial (Opsional)</label>
+                  <label className="text-xs text-slate-600 font-semibold">Nilai Finansial (Opsional)</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-2 text-xs text-[#71717a] font-mono">Rp</span>
+                    <span className="absolute left-3 top-2 text-xs text-slate-400 font-mono">Rp</span>
                     <input
-                      type="number"
-                      value={movFinancialAmount}
-                      onChange={(e) => setMovFinancialAmount(e.target.value)}
-                      className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl pl-9 pr-3 py-2 text-xs text-white font-mono focus:outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      value={formatThousands(movFinancialAmount)}
+                      onChange={(e) => setMovFinancialAmount(formatThousands(e.target.value))}
+                      placeholder="0"
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:bg-white"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Lokasi Rak / Penyimpanan Gudang</label>
+                  <label className="text-xs text-slate-600 font-semibold">Lokasi Rak / Penyimpanan Gudang</label>
                   <input
                     type="text"
                     value={movLocation}
                     onChange={(e) => setMovLocation(e.target.value)}
                     placeholder="Contoh: Freezer Daging #1, Chiller Depan"
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                 </div>
               </div>
@@ -2536,39 +2646,39 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               {/* Source & Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Sumber / Saluran Input</label>
+                  <label className="text-xs text-slate-600 font-semibold">Sumber / Saluran Input</label>
                   <input
                     type="text"
                     value={movSource}
                     onChange={(e) => setMovSource(e.target.value)}
                     placeholder="Contoh: Input Manual Gudang, Kasir POS, Voice Mic..."
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-[#8a8a92]">Catatan / Alasan Mutasi</label>
+                  <label className="text-xs text-slate-600 font-semibold">Catatan / Alasan Mutasi</label>
                   <input
                     type="text"
                     value={movNotes}
                     onChange={(e) => setMovNotes(e.target.value)}
                     placeholder="Contoh: Beli di pasar induk, Basi saat mati lampu..."
-                    className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#28282e]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsMovementModalOpen(false)}
-                  className="px-4 py-2 rounded-full text-xs text-stone-400 hover:text-white"
+                  className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow-md active:scale-95"
+                  className="px-5 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
                 >
                   {editingMovement ? 'Simpan Perubahan Mutasi' : 'Catat ke Buku Mutasi'}
                 </button>

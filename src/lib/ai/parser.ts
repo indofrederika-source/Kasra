@@ -165,14 +165,14 @@ export function parseIndonesianSpokenAmount(text: string): number {
   if (/\b(?:dua juta)\b/i.test(lower)) return 2000000;
 
   // Patterns like "1.5jt", "2,5 juta", "10 juta"
-  const mJt = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:jt|juta)/i);
+  const mJt = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:jt|juta)\b/i);
   if (mJt) {
     const val = parseFloat(mJt[1].replace(',', '.'));
     return Math.round(val * 1000000);
   }
 
   // Patterns like "360 ribu", "25rb", "15k", "140 rebu"
-  const mRb = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:rb|k|ribu|rebu)/i);
+  const mRb = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:rb|k|ribu|rebu)\b/i);
   if (mRb) {
     const val = parseFloat(mRb[1].replace(',', '.'));
     return Math.round(val * 1000);
@@ -216,6 +216,24 @@ export function parseIndonesianSpokenAmount(text: string): number {
     }
   }
 
+  // Indonesian colloquial: number preceded by "harga", "seharga", "biaya", "sebesar"
+  // e.g. "harga 20", "seharga 25", "bayar 50" -> implies thousands in Indonesian daily commerce
+  const mAfterHarga = lower.match(
+    /(?:harga|seharga|biaya|bayar|sebesar|total|senilai)\s+(?:rp\.?\s*)?(\d{1,4})\b(?!\s*(?:ekor|pcs|cup|kg|liter|porsi|bal|kotak|bungkus|butir|x|hari|minggu|bulan))/i
+  );
+  if (mAfterHarga) {
+    const num = parseInt(mAfterHarga[1], 10);
+    if (num > 0 && num <= 999) return num * 1000;
+    if (num > 999) return num;
+  }
+
+  // Indonesian word-numbers preceded by harga / seharga
+  if (/(?:harga|seharga|biaya|bayar)\s+dua puluh\b/i.test(lower)) return 20000;
+  if (/(?:harga|seharga|biaya|bayar)\s+lima puluh\b/i.test(lower)) return 50000;
+  if (/(?:harga|seharga|biaya|bayar)\s+sepuluh\b/i.test(lower)) return 10000;
+  if (/(?:harga|seharga|biaya|bayar)\s+tiga puluh\b/i.test(lower)) return 30000;
+  if (/(?:harga|seharga|biaya|bayar)\s+seratus\b/i.test(lower)) return 100000;
+
   // Standard digits: "15000", "Rp 15.000", "Rp25000"
   const mPlain = lower.match(/(?:rp\.?\s*)?(\d{4,9})/i);
   if (mPlain) {
@@ -249,29 +267,38 @@ export function extractSpokenQuantity(text: string): {
   else if (/\b(?:botol)\b/i.test(lower)) detectedUnit = 'botol';
   else if (/\b(?:butir)\b/i.test(lower)) detectedUnit = 'butir';
 
-  // Multiplier words: 1 dus/karton of milk usually = 12 or 24
   let unitMultiplier = 1;
   if (/\b(?:dus|karton)\b/i.test(lower)) {
     unitMultiplier = 12;
   }
 
-  // Digits: "laku 4", "4 cup", "sebanyak 10", "10 ekor", "3x"
-  const mDigit = lower.match(
+  // Remove monetary phrases before extracting quantity so prices like "20000" or "20rb" aren't confused with item quantity!
+  const sanitizedForQty = lower
+    .replace(/(?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|k|ribu|rebu)\b/gi, ' ')
+    .replace(/(?:harga|seharga|biaya|bayar|sebesar|senilai)\s+(?:rp\.?\s*)?\d+/gi, ' ')
+    .replace(/rp\.?\s*\d+/gi, ' ');
+
+  // Look for: [number] [unit] or [unit] [number] or [noun] [number] e.g. "ayam 6", "6 ayam", "4 cup", "3x"
+  const mDigit = sanitizedForQty.match(
     /(?:sebanyak\s+)?(\d+)\s*(?:x|cup|porsi|pcs|biji|botol|bungkus|kotak|dus|karton|bal|pack|liter|kg|ekor|butir)?/i
   );
   if (mDigit && parseInt(mDigit[1], 10) > 0) {
-    return { qty: parseInt(mDigit[1], 10), unitMultiplier, detectedUnit };
+    const q = parseInt(mDigit[1], 10);
+    // Sanity check: quantities above 1000 without unit are likely numbers that escaped sanitizer
+    if (q <= 1000) {
+      return { qty: q, unitMultiplier, detectedUnit };
+    }
   }
 
   // Words for single items
   if (
     /\b(?:seporsi|secangkir|segelas|sebotol|sebiji|sebungkus|sebuah|sekotak|seikat|sebal|seekor|sebutir)\b/i.test(
-      lower
+      sanitizedForQty
     )
   ) {
     return { qty: 1, unitMultiplier, detectedUnit };
   }
-  if (/\b(?:sekarton|sedus)\b/i.test(lower)) {
+  if (/\b(?:sekarton|sedus)\b/i.test(sanitizedForQty)) {
     return { qty: 1, unitMultiplier: 12, detectedUnit: 'karton' };
   }
 
@@ -293,7 +320,7 @@ export function extractSpokenQuantity(text: string): {
   };
 
   for (const [w, val] of Object.entries(numberWords)) {
-    if (new RegExp(`\\b${w}\\b`, 'i').test(lower)) {
+    if (new RegExp(`\\b${w}\\b`, 'i').test(sanitizedForQty)) {
       return { qty: val, unitMultiplier, detectedUnit };
     }
   }
@@ -498,17 +525,25 @@ export function parseOmniboxInput(
 ): ConfirmationDraft {
   // 1. Run autocorrect and speech glitch sanitization
   const feedback = autocorrectIndonesianVoice(rawInput);
-  const text = feedback.cleanedText;
+  let text = feedback.cleanedText;
 
-  // Multi-clause splitting: Handles 1, 2, 3, 4, or any number of conditions/clauses!
-  // Splits by period, semicolon, newline, comma, or spoken transition conjunctions
+  // 1b. Normalize causal / result clauses that reinforce restock or sale:
+  // e.g. "Tadi gua beli ayam 6, jadinya stok nambah 6" -> merge into purchase context without losing item!
+  text = text
+    .replace(/,\s*(?:jadinya|artinya|sehingga)\s+stok(?:nya)?\s+(?:nambah|bertambah|masuk)\s*\d*\s*(?:[a-zA-Z]+)?/gi, '')
+    .replace(/\b(?:jadinya|artinya|sehingga)\s+stok(?:nya)?\s+(?:nambah|bertambah|masuk)\s*\d*\s*(?:[a-zA-Z]+)?/gi, '');
+
+  // 2. Multi-clause splitting: Handles 1, 2, 3, 4, or any number of conditions/clauses!
+  // Splits by period, semicolon, newline, sequential conjunctions, or comma/dan/sama
   const normalizedForSplit = text
     .replace(/(?:\.|\;|\n|\r\n)+/g, ' [SPLIT] ')
-    .replace(/\b(?:dan|terus|trus|lalu|kemudian|sama|plus|serta|jadinya|juga|habis itu|setelah itu)\b/gi, ' [SPLIT] ');
+    .replace(/,?\s*\b(?:terus|trus|lalu|kemudian|habis itu|setelah itu|selain itu)\b/gi, ' [SPLIT] ')
+    .replace(/,\s*(?=(?:laku|beli|jual|bayar|tambah|kulakan|nyetok|stok|[a-zA-Z]+\s+\d+|\d+\s+[a-zA-Z]+))/gi, ' [SPLIT] ')
+    .replace(/\b(?:dan|sama)\s+(?=(?:laku|beli|jual|bayar|tambah|kulakan|nyetok|stok|[a-zA-Z]+\s+\d+|\d+\s+[a-zA-Z]+))/gi, ' [SPLIT] ');
 
   const rawClauses = normalizedForSplit
-    .split(/\s*\[SPLIT\]\s*|,\s*/)
-    .map((c) => c.trim())
+    .split(/\s*\[SPLIT\]\s*/)
+    .map((c) => c.replace(/^[,\s;]+|[,\s;]+$/g, '').trim())
     .filter((c) => c.length > 0);
 
   const clauses = rawClauses.length > 0 ? rawClauses : [text];
@@ -518,7 +553,9 @@ export function parseOmniboxInput(
   const categoryChanges: CategoryChangeDraft[] = [];
   const explanations: string[] = [];
 
-  // Helper to process a single clause
+  let lastActiveIntent: 'restock' | 'sale' | 'expense' | 'loss' | null = null;
+
+  // Helper to process a single clause with context inheritance
   const processClause = (clause: string) => {
     const clLower = clause.toLowerCase();
     const explicitAmount = parseIndonesianSpokenAmount(clause);
@@ -594,46 +631,45 @@ export function parseOmniboxInput(
     }
 
     // ---------------------------------------------------------
-    // INTENT DISAMBIGUATION (MULTI-CONDITION RESILIENT)
+    // INTENT DISAMBIGUATION (WITH CONTEXT INHERITANCE ACROSS 2-4 CONDITIONS)
     // ---------------------------------------------------------
-    const hasBeliOrBelanja = /\b(?:beli|belanja|pesan pasokan|order pasokan)\b/i.test(clLower);
+    const hasBeliOrBelanja = /\b(?:beli|belanja|pesan pasokan|order pasokan|kulakan|nyetok|restok|restock|pasok|pasokan)\b/i.test(clLower);
     const hasNambahStok =
       /\b(?:tambah|tambahkan|tambahin|nambah|masuk|masukkan|masukin)\s+(?:stok|barang|bahan)?/i.test(clLower) ||
       /\b(?:stok\s+(?:nambah|bertambah|masuk))\b/i.test(clLower);
-    const hasRestockKeywords = /\b(?:kulakan|nyetok|restok|restock|pasok|pasokan)\b/i.test(clLower);
 
-    // Restock Intent:
-    // 1. Explicit restock keywords
-    // 2. Add stock phrasing ("tambah stok", "stok nambah 6")
-    // 3. "Beli [Barang]" where product or ingredient is matched
-    const isRestock =
-      hasRestockKeywords ||
-      hasNambahStok ||
-      (hasBeliOrBelanja &&
-        (matchedProduct !== null ||
-          /\b(?:ayam|daging|telur|susu|kopi|sayur|minyak|beras|tepung|cup|sedotan|kemasan|roti|ikan|bumbu)\b/i.test(
-            clLower
-          )));
+    const hasSaleWords = /\b(?:laku|kejual|terjual|jual|penjualan|ada yang beli|dibeli|order|orderan|pesan|pesanan|tumbas)\b/i.test(clLower);
+    const hasLossWords = /\b(?:basi|expired|kadaluarsa|kedaluwarsa|rusak|pecah|dibuang|tumpah|hilang|buang|sisa kemarin)\b/i.test(clLower);
+    const hasExpenseWords = /\b(?:bayar|ongkir|bensin|listrik|token|pulsa|wifi|parkir|gaji|kebersihan)\b/i.test(clLower);
 
-    // Sale Intent: user SOLD something (-Stok, +Kas)
-    const isSale =
-      !isRestock &&
-      /\b(?:laku|kejual|terjual|jual|penjualan|ada yang beli|dibeli|order|orderan|pesan|pesanan|tumbas)\b/i.test(
-        clLower
-      );
+    let isRestock = hasBeliOrBelanja || hasNambahStok;
+    let isSale = hasSaleWords;
+    let isLoss = hasLossWords;
+    let isExplicitExpense = hasExpenseWords;
 
-    // Loss / Waste Intent (-Stok, 0 Kas)
-    const isLoss = /\b(?:basi|expired|kadaluarsa|kedaluwarsa|rusak|pecah|dibuang|tumpah|hilang|buang|sisa kemarin)\b/i.test(
-      clLower
-    );
+    // CONTEXT INHERITANCE: If clause has no explicit verb, inherit from previous clause in the chain!
+    // e.g. "Laku es kopi 3, roti bakar 2" -> Clause 2 inherits 'sale'!
+    // e.g. "Beli ayam 6 seharga 20rb, telur 2 kilo seharga 30rb" -> Clause 2 inherits 'restock'!
+    if (!isRestock && !isSale && !isLoss && !isExplicitExpense && lastActiveIntent) {
+      if (lastActiveIntent === 'sale') isSale = true;
+      else if (lastActiveIntent === 'restock') isRestock = true;
+      else if (lastActiveIntent === 'loss') isLoss = true;
+      else if (lastActiveIntent === 'expense') isExplicitExpense = true;
+    }
 
-    // Explicit Expense Intent (-Kas, 0 Stok)
-    const isExplicitExpense =
-      !isRestock &&
-      !isSale &&
-      /\b(?:bayar|ongkir|bensin|listrik|token|pulsa|wifi|es batu|parkir|gaji|galon|kebersihan)\b/i.test(
-        clLower
-      );
+    // If still undetermined, check if it's a known product or typical grocery commodity
+    if (!isRestock && !isSale && !isLoss && !isExplicitExpense) {
+      if (matchedProduct || /\b(?:ayam|daging|telur|susu|kopi|sayur|minyak|beras|tepung|cup|sedotan|kemasan|roti|ikan|bumbu)\b/i.test(clLower)) {
+        // Default to sale if user lists items without verb in storefront context
+        isSale = true;
+      }
+    }
+
+    // Update active intent state for subsequent clauses
+    if (isRestock) lastActiveIntent = 'restock';
+    else if (isSale) lastActiveIntent = 'sale';
+    else if (isLoss) lastActiveIntent = 'loss';
+    else if (isExplicitExpense) lastActiveIntent = 'expense';
 
     // ---------------------------------------------------------
     // CASE 1: RESTOCK / TAMBAH STOK (Stok Bertambah +)
@@ -838,7 +874,7 @@ export function parseOmniboxInput(
     // CASE 4: GENERAL OPERATIONAL EXPENSE (Belanja Non-Stok)
     // e.g. "bayar listrik 150rb", "beli es batu 20 ribu", "beli sedotan 25k"
     // ---------------------------------------------------------
-    if (isExplicitExpense || (explicitAmount > 0 && !matchedProduct)) {
+    if (isExplicitExpense || (explicitAmount > 0 && !matchedProduct && !isRestock && !isSale && !isLoss)) {
       const amount = explicitAmount > 0 ? explicitAmount : 20000;
       let cat = 'Operasional';
 

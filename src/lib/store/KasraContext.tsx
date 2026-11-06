@@ -6,6 +6,7 @@ import {
   Transaction,
   StoreProfile,
   StockMovement,
+  StockMovementType,
   ConfirmationDraft,
   TabType,
   CategoryDefinition,
@@ -258,10 +259,93 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Transaction Operations
   const addTransaction = (data: Omit<Transaction, 'id' | 'createdAt'>) => {
+    const trxId = `trx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nowReadable = new Date().toLocaleString('id-ID');
+    const nowIso = data.date || new Date().toISOString().split('T')[0];
+    let createdMovementId: string | undefined = data.relatedMovementId;
+
+    // Check if linked to an inventory product
+    if (data.relatedProductId && data.relatedQuantity && data.relatedQuantity > 0) {
+      const targetProd = products.find((p) => p.id === data.relatedProductId);
+      if (targetProd) {
+        const qty = Number(data.relatedQuantity);
+        const oldStock = targetProd.currentStock;
+        const movType: StockMovementType = data.type === 'income' ? 'out_sale' : 'in_purchase';
+        const delta = data.type === 'income' ? -qty : qty;
+        const newStock = Math.max(0, oldStock + delta);
+
+        let updatedBatches = targetProd.batches ? targetProd.batches.map((b) => ({ ...b })) : [];
+        if (movType === 'in_purchase') {
+          updatedBatches.push({
+            id: `batch-${Date.now()}`,
+            quantity: qty,
+            receivedDate: nowIso,
+            batchCode: formatBatchName(nowIso),
+            costPerUnit: targetProd.hppAmount,
+            expiryDate: targetProd.expiryDate || null,
+          });
+        } else {
+          // FEFO deduction
+          let toDeduct = qty;
+          if (updatedBatches.length > 0) {
+            updatedBatches.sort((a, b) => {
+              if (!a.expiryDate) return 1;
+              if (!b.expiryDate) return -1;
+              return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+            });
+            for (const b of updatedBatches) {
+              if (toDeduct <= 0) break;
+              if (b.quantity > 0) {
+                const dec = Math.min(b.quantity, toDeduct);
+                b.quantity -= dec;
+                toDeduct -= dec;
+              }
+            }
+          }
+        }
+
+        const earliestExp = getActiveProductExpiry(updatedBatches, targetProd.expiryDate);
+        updateProduct(targetProd.id, {
+          currentStock: newStock,
+          batches: updatedBatches,
+          expiryDate: earliestExp || undefined,
+          lastSoldAt: movType === 'out_sale' ? nowReadable : targetProd.lastSoldAt,
+          purchaseDate: movType === 'in_purchase' ? nowIso : targetProd.purchaseDate,
+        });
+
+        if (!createdMovementId) {
+          const movId = `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          createdMovementId = movId;
+          const newMovement: StockMovement = {
+            id: movId,
+            productId: targetProd.id,
+            productName: targetProd.name,
+            sku: targetProd.sku,
+            category: targetProd.category,
+            location: targetProd.location || 'Gudang Utama',
+            type: movType,
+            quantityDelta: delta,
+            unit: targetProd.unit,
+            stockBefore: oldStock,
+            stockAfter: newStock,
+            batchCode: movType === 'in_purchase' ? formatBatchName(nowIso) : undefined,
+            batchExpiry: earliestExp,
+            financialAmount: data.amount,
+            relatedTransactionId: trxId,
+            source: data.inputMethod === 'mic' ? 'Suara Mic' : 'Buku Kas',
+            notes: data.description,
+            createdAt: nowReadable,
+          };
+          setStockMovements((prev) => [newMovement, ...prev]);
+        }
+      }
+    }
+
     const newTrx: Transaction = {
       ...data,
-      id: `trx-${Date.now()}`,
-      createdAt: new Date().toLocaleString('id-ID'),
+      id: trxId,
+      relatedMovementId: createdMovementId,
+      createdAt: nowReadable,
     };
     setTransactions((prev) => [newTrx, ...prev]);
     return newTrx;
@@ -274,19 +358,110 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteTransaction = (id: string) => {
+    const target = transactions.find((t) => t.id === id);
+    if (target && target.relatedMovementId) {
+      setStockMovements((prev) => prev.filter((m) => m.id !== target.relatedMovementId));
+    }
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
   const deleteMultipleTransactions = (ids: string[]) => {
+    const targetMovements = transactions
+      .filter((t) => ids.includes(t.id) && t.relatedMovementId)
+      .map((t) => t.relatedMovementId!);
+    if (targetMovements.length > 0) {
+      setStockMovements((prev) => prev.filter((m) => !targetMovements.includes(m.id)));
+    }
     setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
   };
 
   // Stock Movement Log Operations (Buku Mutasi / Kasir Gudang)
   const addStockMovement = (movement: Omit<StockMovement, 'id' | 'createdAt'>): StockMovement => {
+    const movId = `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const nowReadable = new Date().toLocaleString('id-ID');
+    const nowIso = new Date().toISOString().split('T')[0];
+
+    let linkedTrxId: string | undefined = movement.relatedTransactionId;
+
+    // Automatically update physical product inventory & FEFO batches
+    const matchedProduct = products.find((p) => p.id === movement.productId);
+    if (matchedProduct) {
+      const delta = movement.quantityDelta;
+      const oldStock = matchedProduct.currentStock;
+      const newStock = Math.max(0, oldStock + delta);
+      const isRestock = movement.type === 'in_purchase';
+
+      let updatedBatches = matchedProduct.batches ? matchedProduct.batches.map((b) => ({ ...b })) : [];
+      if (isRestock) {
+        updatedBatches.push({
+          id: `batch-${Date.now()}`,
+          quantity: Math.abs(delta),
+          expiryDate: movement.batchExpiry || null,
+          receivedDate: nowIso,
+          costPerUnit: matchedProduct.hppAmount,
+          batchCode: movement.batchCode || formatBatchName(nowIso),
+        });
+      } else {
+        // FEFO deduction
+        let remainingToDeduct = Math.abs(delta);
+        if (updatedBatches.length > 0) {
+          updatedBatches.sort((a, b) => {
+            if (!a.expiryDate) return 1;
+            if (!b.expiryDate) return -1;
+            return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+          });
+          for (const b of updatedBatches) {
+            if (remainingToDeduct <= 0) break;
+            if (b.quantity > 0) {
+              const dec = Math.min(b.quantity, remainingToDeduct);
+              b.quantity -= dec;
+              remainingToDeduct -= dec;
+            }
+          }
+        }
+      }
+
+      const earliestExp = getActiveProductExpiry(updatedBatches, movement.batchExpiry || matchedProduct.expiryDate);
+      updateProduct(matchedProduct.id, {
+        currentStock: newStock,
+        batches: updatedBatches,
+        expiryDate: earliestExp || undefined,
+        lastSoldAt: !isRestock ? nowReadable : matchedProduct.lastSoldAt,
+        purchaseDate: isRestock ? nowIso : matchedProduct.purchaseDate,
+      });
+
+      // Automatically sync with Buku Kas (Transactions) if financialAmount > 0 and no transaction already linked
+      if (movement.financialAmount && movement.financialAmount > 0 && !linkedTrxId) {
+        const trxId = `trx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        linkedTrxId = trxId;
+
+        const isExpense = movement.type === 'in_purchase' || movement.type === 'waste';
+        const newTrx: Transaction = {
+          id: trxId,
+          type: isExpense ? 'expense' : 'income',
+          amount: movement.financialAmount,
+          category: isExpense ? (matchedProduct.category || 'Bahan Baku & Dapur') : 'Penjualan',
+          description: movement.notes || (
+            isExpense
+              ? `Kulakan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
+              : `Penjualan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
+          ),
+          date: nowIso,
+          inputMethod: 'manual',
+          relatedProductId: matchedProduct.id,
+          relatedQuantity: Math.abs(delta),
+          relatedMovementId: movId,
+          createdAt: nowReadable,
+        };
+        setTransactions((prev) => [newTrx, ...prev]);
+      }
+    }
+
     const newMov: StockMovement = {
       ...movement,
-      id: `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      createdAt: new Date().toLocaleString('id-ID'),
+      id: movId,
+      relatedTransactionId: linkedTrxId,
+      createdAt: nowReadable,
     };
     setStockMovements((prev) => [newMov, ...prev]);
     return newMov;
@@ -294,11 +469,23 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateStockMovement = (id: string, updates: Partial<StockMovement>) => {
     setStockMovements((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
+      prev.map((m) => {
+        if (m.id === id) {
+          if (m.relatedTransactionId && updates.financialAmount !== undefined) {
+            updateTransaction(m.relatedTransactionId, { amount: updates.financialAmount });
+          }
+          return { ...m, ...updates };
+        }
+        return m;
+      })
     );
   };
 
   const deleteStockMovement = (id: string) => {
+    const target = stockMovements.find((m) => m.id === id);
+    if (target && target.relatedTransactionId) {
+      setTransactions((prev) => prev.filter((t) => t.id !== target.relatedTransactionId));
+    }
     setStockMovements((prev) => prev.filter((m) => m.id !== id));
   };
 
@@ -310,11 +497,9 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const oldStock = target.currentStock;
     const newStock = Math.max(0, oldStock + delta);
     const nowIso = new Date().toISOString().split('T')[0];
+    const financialVal = delta > 0 ? target.hppAmount * delta : target.sellingPrice * Math.abs(delta);
 
-    updateProduct(productId, { currentStock: newStock });
-
-    const movement: StockMovement = {
-      id: `mov-${Date.now()}`,
+    addStockMovement({
       productId,
       productName: target.name,
       sku: target.sku,
@@ -327,12 +512,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       stockAfter: newStock,
       batchCode: delta > 0 ? formatBatchName(nowIso) : undefined,
       batchExpiry: target.expiryDate,
-      financialAmount: delta > 0 ? target.hppAmount * delta : target.sellingPrice * Math.abs(delta),
+      financialAmount: financialVal,
       source: 'Penyesuaian Cepat',
       notes: reason,
-      createdAt: new Date().toLocaleString('id-ID'),
-    };
-    setStockMovements((prev) => [movement, ...prev]);
+    });
   };
 
   // Human-In-The-Loop Draft Execution
@@ -362,10 +545,6 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       inputMethod: draft.source.startsWith('mic') ? 'mic' : 'photo',
       createdAt: nowReadable,
     }));
-
-    if (newTransactionsToAdd.length > 0) {
-      setTransactions((prev) => [...newTransactionsToAdd, ...prev]);
-    }
 
     // 2. Process all stock changes
     const newMovements: StockMovement[] = [];
@@ -510,6 +689,27 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
+    // Cross-link transactions and movements for complete data synchronization
+    if (newTransactionsToAdd.length === 1 && newMovements.length === 1) {
+      newTransactionsToAdd[0].relatedMovementId = newMovements[0].id;
+      newMovements[0].relatedTransactionId = newTransactionsToAdd[0].id;
+    } else {
+      newTransactionsToAdd.forEach((trx) => {
+        const movMatch = newMovements.find(
+          (m) =>
+            trx.description.toLowerCase().includes(m.productName.toLowerCase()) ||
+            m.productName.toLowerCase().includes(trx.category.toLowerCase())
+        );
+        if (movMatch) {
+          trx.relatedMovementId = movMatch.id;
+          movMatch.relatedTransactionId = trx.id;
+        }
+      });
+    }
+
+    if (newTransactionsToAdd.length > 0) {
+      setTransactions((prev) => [...newTransactionsToAdd, ...prev]);
+    }
     setProducts(updatedProducts);
     if (newMovements.length > 0) {
       setStockMovements((prev) => [...newMovements, ...prev]);

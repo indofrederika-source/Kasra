@@ -38,7 +38,7 @@ import {
 } from 'recharts';
 
 export const AnalyticsView: React.FC = () => {
-  const { profile, transactions, products, monthIncome, monthExpense, totalAssetValue } = useKasra();
+  const { profile, transactions, products, stockMovements, monthIncome, monthExpense, totalAssetValue } = useKasra();
 
   // Segmented Mode Switch (Foto 2 Style: Chart | Report | Table)
   const [viewSegment, setViewSegment] = useState<'chart' | 'report' | 'table'>('chart');
@@ -49,56 +49,179 @@ export const AnalyticsView: React.FC = () => {
   // Chart Timeframe Switcher (Harian | Mingguan | Bulanan | Tahunan)
   const [chartTimeframe, setChartTimeframe] = useState<'day' | 'week' | 'month' | 'year'>('week');
 
-  // Multi-Timeframe Chart Datasets
+  interface ChartItem {
+    period: string;
+    masuk: number;
+    keluar: number;
+    laba: number;
+    saldoKas: number;
+    omset: number;
+    marginPercent: number;
+  }
+
+  // Dynamic Datasets computed from real transactions
   const chartDatasets = useMemo(() => {
+    const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const now = new Date();
+
+    // 1. Day dataset (last 7 days)
+    const dayList: ChartItem[] = [];
+    let runningSaldoDay = 0;
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().split('T')[0];
+      const isToday = i === 0;
+      const label = isToday ? 'Hari Ini' : dayNames[d.getDay()];
+
+      let masuk = 0;
+      let keluar = 0;
+      transactions.forEach((t) => {
+        if (t.date === dStr) {
+          if (t.type === 'income') masuk += t.amount;
+          else if (t.type === 'expense') keluar += t.amount;
+        }
+      });
+      const laba = masuk - keluar;
+      runningSaldoDay += laba;
+      const margin = masuk > 0 ? Math.round((laba / masuk) * 100) : 0;
+      dayList.push({
+        period: label,
+        masuk,
+        keluar,
+        laba,
+        saldoKas: runningSaldoDay,
+        omset: masuk,
+        marginPercent: margin,
+      });
+    }
+
+    // 2. Week dataset (4 weeks of current month)
+    const currentMonthPrefix = now.toISOString().slice(0, 7);
+    const weekList: ChartItem[] = [];
+    let runningSaldoWeek = 0;
+    for (let w = 1; w <= 4; w++) {
+      let masuk = 0;
+      let keluar = 0;
+      const startDay = (w - 1) * 7 + 1;
+      const endDay = w === 4 ? 31 : w * 7;
+
+      transactions.forEach((t) => {
+        if (t.date && t.date.startsWith(currentMonthPrefix)) {
+          const dayNum = parseInt(t.date.split('-')[2], 10) || 1;
+          if (dayNum >= startDay && dayNum <= endDay) {
+            if (t.type === 'income') masuk += t.amount;
+            else if (t.type === 'expense') keluar += t.amount;
+          }
+        }
+      });
+      const laba = masuk - keluar;
+      runningSaldoWeek += laba;
+      const margin = masuk > 0 ? Math.round((laba / masuk) * 100) : 0;
+      weekList.push({
+        period: `Minggu ${w}`,
+        masuk,
+        keluar,
+        laba,
+        saldoKas: runningSaldoWeek,
+        omset: masuk,
+        marginPercent: margin,
+      });
+    }
+
+    // 3. Month dataset (Jan to Dec of current year)
+    const currentYear = now.getFullYear();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const monthList: ChartItem[] = [];
+    let runningSaldoMonth = 0;
+    for (let m = 0; m < 12; m++) {
+      const mStr = `${currentYear}-${(m + 1).toString().padStart(2, '0')}`;
+      let masuk = 0;
+      let keluar = 0;
+      transactions.forEach((t) => {
+        if (t.date && t.date.startsWith(mStr)) {
+          if (t.type === 'income') masuk += t.amount;
+          else if (t.type === 'expense') keluar += t.amount;
+        }
+      });
+      const laba = masuk - keluar;
+      runningSaldoMonth += laba;
+      const margin = masuk > 0 ? Math.round((laba / masuk) * 100) : 0;
+      monthList.push({
+        period: monthNames[m],
+        masuk,
+        keluar,
+        laba,
+        saldoKas: runningSaldoMonth,
+        omset: masuk,
+        marginPercent: margin,
+      });
+    }
+
+    // 4. Year dataset (last 3 years)
+    const yearList: ChartItem[] = [];
+    let runningSaldoYear = 0;
+    const years = [currentYear - 2, currentYear - 1, currentYear];
+    years.forEach((yr) => {
+      const yrStr = yr.toString();
+      let masuk = 0;
+      let keluar = 0;
+      transactions.forEach((t) => {
+        if (t.date && t.date.startsWith(yrStr)) {
+          if (t.type === 'income') masuk += t.amount;
+          else if (t.type === 'expense') keluar += t.amount;
+        }
+      });
+      const laba = masuk - keluar;
+      runningSaldoYear += laba;
+      const margin = masuk > 0 ? Math.round((laba / masuk) * 100) : 0;
+      yearList.push({
+        period: yrStr,
+        masuk,
+        keluar,
+        laba,
+        saldoKas: runningSaldoYear,
+        omset: masuk,
+        marginPercent: margin,
+      });
+    });
+
     return {
-      day: [
-        { period: 'Senin', masuk: 580000, keluar: 160000, laba: 420000, saldoKas: 420000, omset: 580000, marginPercent: 35 },
-        { period: 'Selasa', masuk: 690000, keluar: 210000, laba: 480000, saldoKas: 900000, omset: 690000, marginPercent: 36 },
-        { period: 'Rabu', masuk: 740000, keluar: 190000, laba: 550000, saldoKas: 1450000, omset: 740000, marginPercent: 37 },
-        { period: 'Kamis', masuk: 630000, keluar: 290000, laba: 340000, saldoKas: 1790000, omset: 630000, marginPercent: 34 },
-        { period: 'Jumat', masuk: 890000, keluar: 260000, laba: 630000, saldoKas: 2420000, omset: 890000, marginPercent: 38 },
-        { period: 'Sabtu', masuk: 1350000, keluar: 420000, laba: 930000, saldoKas: 3350000, omset: 1350000, marginPercent: 41 },
-        { period: 'Minggu', masuk: 1520000, keluar: 390000, laba: 1130000, saldoKas: 4480000, omset: 1520000, marginPercent: 42 },
-      ],
-      week: [
-        { period: 'Minggu 1', masuk: 3200000, keluar: 850000, laba: 2350000, saldoKas: 2350000, omset: 3200000, marginPercent: 32 },
-        { period: 'Minggu 2', masuk: 4100000, keluar: 1200000, laba: 2900000, saldoKas: 5250000, omset: 4100000, marginPercent: 36 },
-        { period: 'Minggu 3', masuk: 3800000, keluar: 950000, laba: 2850000, saldoKas: 8100000, omset: 3800000, marginPercent: 34 },
-        { period: 'Minggu 4', masuk: 5200000, keluar: 1400000, laba: 3800000, saldoKas: 11900000, omset: 5200000, marginPercent: 39 },
-      ],
-      month: [
-        { period: 'Jan', masuk: 12500000, keluar: 4200000, laba: 8300000, saldoKas: 8300000, omset: 12500000, marginPercent: 34 },
-        { period: 'Feb', masuk: 14200000, keluar: 4600000, laba: 9600000, saldoKas: 17900000, omset: 14200000, marginPercent: 35 },
-        { period: 'Mar', masuk: 16800000, keluar: 5200000, laba: 11600000, saldoKas: 29500000, omset: 16800000, marginPercent: 37 },
-        { period: 'Apr', masuk: 15400000, keluar: 4900000, laba: 10500000, saldoKas: 40000000, omset: 15400000, marginPercent: 36 },
-        { period: 'Mei', masuk: 17900000, keluar: 5800000, laba: 12100000, saldoKas: 52100000, omset: 17900000, marginPercent: 38 },
-        { period: 'Jun', masuk: 19500000, keluar: 6200000, laba: 13300000, saldoKas: 65400000, omset: 19500000, marginPercent: 39 },
-        { period: 'Jul', masuk: 18200000, keluar: 5900000, laba: 12300000, saldoKas: 77700000, omset: 18200000, marginPercent: 38 },
-        { period: 'Agu', masuk: 20100000, keluar: 6500000, laba: 13600000, saldoKas: 91300000, omset: 20100000, marginPercent: 40 },
-        { period: 'Sep', masuk: 19800000, keluar: 6300000, laba: 13500000, saldoKas: 104800000, omset: 19800000, marginPercent: 39 },
-        { period: 'Okt', masuk: 22400000, keluar: 7100000, laba: 15300000, saldoKas: 120100000, omset: 22400000, marginPercent: 41 },
-        { period: 'Nov', masuk: 21500000, keluar: 6800000, laba: 14700000, saldoKas: 134800000, omset: 21500000, marginPercent: 40 },
-        { period: 'Des', masuk: 25800000, keluar: 8200000, laba: 17600000, saldoKas: 152400000, omset: 25800000, marginPercent: 42 },
-      ],
-      year: [
-        { period: '2023', masuk: 120000000, keluar: 45000000, laba: 75000000, saldoKas: 75000000, omset: 120000000, marginPercent: 33 },
-        { period: '2024', masuk: 168000000, keluar: 58000000, laba: 110000000, saldoKas: 185000000, omset: 168000000, marginPercent: 36 },
-        { period: '2025', masuk: 215000000, keluar: 72000000, laba: 143000000, saldoKas: 328000000, omset: 215000000, marginPercent: 38 },
-        { period: '2026', masuk: 285000000, keluar: 92000000, laba: 193000000, saldoKas: 521000000, omset: 285000000, marginPercent: 41 },
-      ],
+      day: dayList,
+      week: weekList,
+      month: monthList,
+      year: yearList,
     };
-  }, []);
+  }, [transactions]);
 
   const activeChartData = chartDatasets[chartTimeframe];
 
-  // 3. Operational & Expense Category Allocation (Donut / Pie)
-  const categoryDonutData = [
-    { name: 'Bahan Baku & Dapur', value: 2450000, color: '#f2aa4b' },
-    { name: 'Kemasan & Packaging', value: 780000, color: '#e0892b' },
-    { name: 'Operasional & Utilitas', value: 650000, color: '#71717a' },
-    { name: 'Peralatan & Aset Toko', value: 520000, color: '#484d5c' },
-  ];
+  // 3. Operational & Expense Category Allocation (Donut / Pie) computed dynamically
+  const categoryDonutData = useMemo(() => {
+    const catMap: Record<string, number> = {};
+    const colors = ['#84cc16', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899', '#64748b'];
+
+    transactions
+      .filter((t) => t.type === 'expense')
+      .forEach((t) => {
+        const cat = t.category || 'Lainnya';
+        catMap[cat] = (catMap[cat] || 0) + t.amount;
+      });
+
+    const entries = Object.entries(catMap);
+    if (entries.length === 0) {
+      return [
+        { name: 'Bahan Baku & Dapur', value: 1, color: '#84cc16' },
+        { name: 'Operasional', value: 1, color: '#f59e0b' },
+      ];
+    }
+
+    return entries.map(([name, value], idx) => ({
+      name,
+      value,
+      color: colors[idx % colors.length],
+    }));
+  }, [transactions]);
 
   // Report Editable State
   const [reportTitle, setReportTitle] = useState(
@@ -201,35 +324,47 @@ export const AnalyticsView: React.FC = () => {
 
   const spreadsheetTotal = spreadsheetRows.reduce((acc, r) => acc + r.subtotal, 0);
 
-  // Fast-Moving & Deadstock analysis
-  const fastMoving = products.slice(0, 3);
-  const deadstockItems = products.filter((p) => p.currentStock > 15 && p.sellingPrice > 15000).slice(0, 3);
+  // Fast-Moving: Products with highest out_sale quantity in stock movements
+  const fastMoving = useMemo(() => {
+    const saleCountMap: Record<string, number> = {};
+    (stockMovements || []).forEach((m) => {
+      if (m.type === 'out_sale') {
+        saleCountMap[m.productId] = (saleCountMap[m.productId] || 0) + Math.abs(m.quantityDelta);
+      }
+    });
+    return [...products]
+      .sort((a, b) => (saleCountMap[b.id] || 0) - (saleCountMap[a.id] || 0))
+      .slice(0, 3);
+  }, [products, stockMovements]);
+
+  // Deadstock: Products with currentStock > 0 but lowest or 0 sales
+  const deadstockItems = useMemo(() => {
+    const saleCountMap: Record<string, number> = {};
+    (stockMovements || []).forEach((m) => {
+      if (m.type === 'out_sale') {
+        saleCountMap[m.productId] = (saleCountMap[m.productId] || 0) + Math.abs(m.quantityDelta);
+      }
+    });
+    const lowOrNoSales = products.filter((p) => p.currentStock > 0 && (saleCountMap[p.id] || 0) === 0);
+    return (lowOrNoSales.length > 0 ? lowOrNoSales : products.filter((p) => p.currentStock > 10)).slice(0, 3);
+  }, [products, stockMovements]);
+
   const totalLockedCapital = deadstockItems.reduce((acc, p) => acc + p.currentStock * p.hppAmount, 0);
 
-  // Custom Sleek Dark Tooltips to eliminate white boxes on inspect
+  // Custom Sleek Non-Obstructive Tooltips
   const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const masuk = payload.find((p: any) => p.dataKey === 'masuk')?.value || 0;
       const keluar = payload.find((p: any) => p.dataKey === 'keluar')?.value || 0;
       const laba = masuk - keluar;
       return (
-        <div className="bg-[#171719] border border-[#2c2c32] rounded-xl p-3 shadow-2xl text-xs space-y-1.5 min-w-[190px]">
-          <p className="font-bold text-white border-b border-[#2c2c32] pb-1.5 flex items-center justify-between">
-            <span>{label}</span>
-            <span className="text-[10px] text-[#8a8a92] font-normal uppercase">Periode</span>
-          </p>
-          <div className="flex justify-between items-center text-emerald-400">
-            <span>Uang Masuk:</span>
-            <span className="font-mono font-semibold">+{formatRupiah(masuk)}</span>
-          </div>
-          <div className="flex justify-between items-center text-rose-400">
-            <span>Uang Keluar:</span>
-            <span className="font-mono font-semibold">-{formatRupiah(keluar)}</span>
-          </div>
-          <div className="flex justify-between items-center text-[#f2aa4b] pt-1.5 border-t border-[#2c2c32]">
-            <span className="font-medium">Surplus / Laba:</span>
-            <span className="font-mono font-bold">{formatRupiah(laba)}</span>
-          </div>
+        <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-md text-xs flex items-center gap-3 font-mono pointer-events-none select-none">
+          <span className="font-bold text-slate-900 font-sans">{label}:</span>
+          <span className="text-emerald-700 font-bold">+{formatRupiah(masuk)}</span>
+          <span className="text-rose-600 font-bold">-{formatRupiah(keluar)}</span>
+          <span className="text-slate-500 font-semibold border-l border-slate-200 pl-2">
+            Laba: <span className={laba >= 0 ? 'text-slate-900 font-bold' : 'text-rose-600 font-bold'}>{formatRupiah(laba)}</span>
+          </span>
         </div>
       );
     }
@@ -240,14 +375,14 @@ export const AnalyticsView: React.FC = () => {
     if (active && payload && payload.length) {
       const saldo = payload[0]?.value || 0;
       return (
-        <div className="bg-[#171719] border border-[#2c2c32] rounded-xl p-3 shadow-2xl text-xs space-y-1.5 min-w-[180px]">
-          <p className="font-bold text-white border-b border-[#2c2c32] pb-1.5 flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xl text-xs space-y-1.5 min-w-[180px]">
+          <p className="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center justify-between">
             <span>{label}</span>
-            <span className="text-[10px] text-[#8a8a92] font-normal uppercase">Periode</span>
+            <span className="text-[10px] text-slate-400 font-normal uppercase">Periode</span>
           </p>
-          <div className="flex justify-between items-center text-[#f2aa4b] pt-1">
-            <span className="text-stone-300">Akumulasi Saldo:</span>
-            <span className="font-mono font-bold text-white">{formatRupiah(saldo)}</span>
+          <div className="flex justify-between items-center text-slate-900 pt-1">
+            <span className="text-slate-600">Akumulasi Saldo:</span>
+            <span className="font-mono font-bold text-slate-900">{formatRupiah(saldo)}</span>
           </div>
         </div>
       );
@@ -261,16 +396,16 @@ export const AnalyticsView: React.FC = () => {
       const totalDonut = categoryDonutData.reduce((acc, c) => acc + c.value, 0);
       const pct = ((data.value / totalDonut) * 100).toFixed(1);
       return (
-        <div className="bg-[#171719] border border-[#2c2c32] rounded-xl p-3 shadow-2xl text-xs space-y-1.5 min-w-[210px]">
-          <div className="flex items-center gap-2 border-b border-[#2c2c32] pb-1.5">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: data.payload.color || '#f2aa4b' }} />
-            <span className="font-bold text-white">{data.name}</span>
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xl text-xs space-y-1.5 min-w-[210px]">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-1.5">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: data.payload.color || '#84cc16' }} />
+            <span className="font-bold text-slate-900">{data.name}</span>
           </div>
-          <div className="flex justify-between items-center text-stone-300">
+          <div className="flex justify-between items-center text-slate-600">
             <span>Nominal Beban:</span>
-            <span className="font-mono font-bold text-white">{formatRupiah(data.value)}</span>
+            <span className="font-mono font-bold text-slate-900">{formatRupiah(data.value)}</span>
           </div>
-          <div className="flex justify-between items-center text-[#f2aa4b]">
+          <div className="flex justify-between items-center text-amber-600">
             <span>Proporsi Beban:</span>
             <span className="font-mono font-semibold">{pct}% dari total</span>
           </div>
@@ -285,16 +420,16 @@ export const AnalyticsView: React.FC = () => {
       const omset = payload.find((p: any) => p.dataKey === 'omset')?.value || 0;
       const margin = payload.find((p: any) => p.dataKey === 'marginPercent')?.value || 0;
       return (
-        <div className="bg-[#171719] border border-[#2c2c32] rounded-xl p-3 shadow-2xl text-xs space-y-1.5 min-w-[190px]">
-          <p className="font-bold text-white border-b border-[#2c2c32] pb-1.5 flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xl text-xs space-y-1.5 min-w-[190px]">
+          <p className="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center justify-between">
             <span>{label}</span>
-            <span className="text-[10px] text-[#8a8a92] font-normal uppercase">Periode</span>
+            <span className="text-[10px] text-slate-400 font-normal uppercase">Periode</span>
           </p>
-          <div className="flex justify-between items-center text-[#f2aa4b]">
+          <div className="flex justify-between items-center text-slate-900">
             <span>Omset Penjualan:</span>
             <span className="font-mono font-bold">{formatRupiah(omset)}</span>
           </div>
-          <div className="flex justify-between items-center text-emerald-400">
+          <div className="flex justify-between items-center text-emerald-600">
             <span>Rasio Margin Laba:</span>
             <span className="font-mono font-bold">{margin}%</span>
           </div>
@@ -309,10 +444,10 @@ export const AnalyticsView: React.FC = () => {
       {/* 1. Header & Official Bank Exports */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Analisis & Studio Laporan Resmi
           </h1>
-          <p className="text-xs text-[#8a8a92] mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Visualisasi keuangan, identifikasi perputaran barang, dan lembar kerja perbankan
           </p>
         </div>
@@ -321,15 +456,15 @@ export const AnalyticsView: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => exportToExcel(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#202024] hover:bg-[#28282e] text-stone-200 border border-[#2c2c32] text-xs font-semibold transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs"
           >
-            <FileSpreadsheet className="w-4 h-4 text-stone-300" />
+            <FileSpreadsheet className="w-4 h-4 text-slate-500" />
             <span>Export Excel (.xlsx)</span>
           </button>
 
           <button
             onClick={() => exportToOfficialPdf(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow-md active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
           >
             <FileText className="w-4 h-4" />
             <span>Cetak PDF Resmi Bank (KUR)</span>
@@ -337,15 +472,15 @@ export const AnalyticsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Segmented Switch Bar (Haulix / Apple Pill Switcher) */}
+      {/* 2. Segmented Switch Bar */}
       <div className="flex items-center justify-center sm:justify-start">
-        <div className="inline-flex items-center p-1 bg-[#171719] border border-[#2c2c32] rounded-full shadow-inner">
+        <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200/80 rounded-full shadow-inner">
           <button
             onClick={() => setViewSegment('chart')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'chart'
-                ? 'bg-white text-black shadow-md'
-                : 'text-stone-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <BarChart2 className="w-3.5 h-3.5" />
@@ -356,8 +491,8 @@ export const AnalyticsView: React.FC = () => {
             onClick={() => setViewSegment('report')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'report'
-                ? 'bg-white text-black shadow-md'
-                : 'text-stone-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -368,8 +503,8 @@ export const AnalyticsView: React.FC = () => {
             onClick={() => setViewSegment('table')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'table'
-                ? 'bg-white text-black shadow-md'
-                : 'text-stone-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -382,12 +517,12 @@ export const AnalyticsView: React.FC = () => {
       {viewSegment === 'chart' && (
         <div className="space-y-6">
           {/* Format Diagram Switcher & Timeframe Selector */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#171719] border border-[#2c2c32] rounded-2xl p-3 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
             {/* Diagram Model Selector */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="flex items-center gap-2 px-1">
-                <BarChart2 className="w-4 h-4 text-[#f2aa4b]" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Model Diagram:</span>
+                <BarChart2 className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Model Diagram:</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -396,8 +531,8 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('bar')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                     chartType === 'bar'
-                      ? 'bg-white text-black shadow-md font-bold'
-                      : 'bg-[#1c1c1f] text-stone-400 hover:text-white border border-[#2c2c32]'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
                   <BarChart2 className="w-3.5 h-3.5" />
@@ -409,8 +544,8 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('area')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                     chartType === 'area'
-                      ? 'bg-white text-black shadow-md font-bold'
-                      : 'bg-[#1c1c1f] text-stone-400 hover:text-white border border-[#2c2c32]'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
                   <LineChartIcon className="w-3.5 h-3.5" />
@@ -422,8 +557,8 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('donut')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                     chartType === 'donut'
-                      ? 'bg-white text-black shadow-md font-bold'
-                      : 'bg-[#1c1c1f] text-stone-400 hover:text-white border border-[#2c2c32]'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
                   <PieChartIcon className="w-3.5 h-3.5" />
@@ -435,8 +570,8 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('composed')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                     chartType === 'composed'
-                      ? 'bg-white text-black shadow-md font-bold'
-                      : 'bg-[#1c1c1f] text-stone-400 hover:text-white border border-[#2c2c32]'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
@@ -446,8 +581,8 @@ export const AnalyticsView: React.FC = () => {
             </div>
 
             {/* Timeframe Selector (Hari | Minggu | Bulan | Tahun) */}
-            <div className="flex items-center gap-1 bg-[#121214] border border-[#2c2c32] p-1 rounded-xl self-start lg:self-auto">
-              <span className="text-[11px] font-semibold text-[#8a8a92] px-2">Rentang:</span>
+            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200/70 p-1 rounded-xl self-start lg:self-auto">
+              <span className="text-[11px] font-semibold text-slate-500 px-2">Rentang:</span>
               {(['day', 'week', 'month', 'year'] as const).map((tf) => {
                 const labels = {
                   day: 'Per Hari',
@@ -462,8 +597,8 @@ export const AnalyticsView: React.FC = () => {
                     onClick={() => setChartTimeframe(tf)}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                       chartTimeframe === tf
-                        ? 'bg-[#f2aa4b] text-black shadow-sm font-bold'
-                        : 'text-stone-400 hover:text-white hover:bg-[#202024]'
+                        ? 'bg-lime-500 text-slate-950 font-bold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                     }`}
                   >
                     {labels[tf]}
@@ -475,25 +610,25 @@ export const AnalyticsView: React.FC = () => {
 
           {/* DIAGRAM 1: Batang (Bar Chart - Arus Kas Masuk vs Keluar) */}
           {chartType === 'bar' && (
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-4">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-bold text-white">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Arus Kas {chartTimeframe === 'day' ? 'Harian' : chartTimeframe === 'week' ? 'Mingguan' : chartTimeframe === 'month' ? 'Bulanan' : 'Tahunan'} (Uang Masuk vs Uang Keluar)
                   </h3>
-                  <p className="text-xs text-[#8a8a92]">
+                  <p className="text-xs text-slate-500">
                     Komparasi kas masuk vs pengeluaran kulakan & operasional ({chartTimeframe === 'day' ? 'Senin - Minggu' : chartTimeframe === 'week' ? '4 Minggu Terakhir' : chartTimeframe === 'month' ? '12 Bulan' : 'Tren Multi-Tahun'})
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-medium">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#f2aa4b]" />
-                    <span className="text-stone-300">Pemasukan</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                    <span className="text-slate-600">Pemasukan</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#484d5c]" />
-                    <span className="text-stone-300">Pengeluaran</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                    <span className="text-slate-600">Pengeluaran</span>
                   </div>
                 </div>
               </div>
@@ -501,20 +636,33 @@ export const AnalyticsView: React.FC = () => {
               <div className="h-64 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={activeChartData} barGap={8}>
-                    <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} />
+                    <XAxis dataKey="period" stroke="#94a3b8" fontSize={11} tickLine={false} />
                     <YAxis
-                      stroke="#71717a"
+                      stroke="#94a3b8"
                       fontSize={10}
                       tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
                       tickLine={false}
                       axisLine={false}
                     />
                     <Tooltip
-                      cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
+                      cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
+                      position={{ y: 0 }}
                       content={<CustomBarTooltip />}
                     />
-                    <Bar dataKey="masuk" fill="#f2aa4b" radius={[6, 6, 0, 0]} barSize={28} />
-                    <Bar dataKey="keluar" fill="#484d5c" radius={[6, 6, 0, 0]} barSize={28} />
+                    <Bar
+                      dataKey="masuk"
+                      fill="#84cc16"
+                      radius={[8, 8, 0, 0]}
+                      barSize={24}
+                      background={{ fill: '#f8fafc', radius: 8 }}
+                    />
+                    <Bar
+                      dataKey="keluar"
+                      fill="#cbd5e1"
+                      radius={[8, 8, 0, 0]}
+                      barSize={24}
+                      background={{ fill: '#f8fafc', radius: 8 }}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -523,21 +671,21 @@ export const AnalyticsView: React.FC = () => {
 
           {/* DIAGRAM 2: Tren Area (Area Chart - Pertumbuhan Akumulasi Saldo Kas) */}
           {chartType === 'area' && (
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-4">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-bold text-white">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Tren Akumulasi Saldo Kas Bersih ({chartTimeframe === 'day' ? 'Harian' : chartTimeframe === 'week' ? 'Mingguan' : chartTimeframe === 'month' ? 'Bulanan' : 'Tahunan'})
                   </h3>
-                  <p className="text-xs text-[#8a8a92]">
+                  <p className="text-xs text-slate-500">
                     Pertumbuhan likuiditas kas toko berjalan ({chartTimeframe === 'day' ? 'Per Hari' : chartTimeframe === 'week' ? 'Per Minggu' : chartTimeframe === 'month' ? 'Per Bulan' : 'Per Tahun'})
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-medium">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#f2aa4b]" />
-                    <span className="text-stone-300">Akumulasi Saldo</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                    <span className="text-slate-600">Akumulasi Saldo</span>
                   </div>
                 </div>
               </div>
@@ -547,26 +695,26 @@ export const AnalyticsView: React.FC = () => {
                   <AreaChart data={activeChartData}>
                     <defs>
                       <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f2aa4b" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#f2aa4b" stopOpacity={0.0} />
+                        <stop offset="5%" stopColor="#84cc16" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#84cc16" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} />
+                    <XAxis dataKey="period" stroke="#94a3b8" fontSize={11} tickLine={false} />
                     <YAxis
-                      stroke="#71717a"
+                      stroke="#94a3b8"
                       fontSize={10}
                       tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
                       tickLine={false}
                       axisLine={false}
                     />
                     <Tooltip
-                      cursor={{ stroke: '#f2aa4b', strokeWidth: 1.5, strokeDasharray: '4 4' }}
+                      cursor={{ stroke: '#84cc16', strokeWidth: 1.5, strokeDasharray: '4 4' }}
                       content={<CustomAreaTooltip />}
                     />
                     <Area
                       type="monotone"
                       dataKey="saldoKas"
-                      stroke="#f2aa4b"
+                      stroke="#84cc16"
                       strokeWidth={3}
                       fillOpacity={1}
                       fill="url(#colorSaldo)"
@@ -579,11 +727,11 @@ export const AnalyticsView: React.FC = () => {
 
           {/* DIAGRAM 3: Donat Beban (Pie / Donut Chart - Komposisi Alokasi Beban Toko) */}
           {chartType === 'donut' && (
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-4">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Komposisi Beban Usaha & Kulakan</h3>
-                  <p className="text-xs text-[#8a8a92]">Proporsi modal belanja per kategori utama untuk efisiensi toko</p>
+                  <h3 className="text-sm font-bold text-slate-900">Komposisi Beban Usaha & Kulakan</h3>
+                  <p className="text-xs text-slate-500">Proporsi modal belanja per kategori utama untuk efisiensi toko</p>
                 </div>
               </div>
 
@@ -601,7 +749,7 @@ export const AnalyticsView: React.FC = () => {
                         dataKey="value"
                       >
                         {categoryDonutData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} stroke="#1c1c1f" strokeWidth={2} />
+                          <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
                         ))}
                       </Pie>
                       <Tooltip content={<CustomDonutTooltip />} />
@@ -614,14 +762,14 @@ export const AnalyticsView: React.FC = () => {
                     const totalDonut = categoryDonutData.reduce((acc, c) => acc + c.value, 0);
                     const pct = Math.round((cat.value / totalDonut) * 100);
                     return (
-                      <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-[#171719] border border-[#2c2c32]">
+                      <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
                         <div className="flex items-center gap-2.5">
                           <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                          <span className="text-xs font-semibold text-white">{cat.name}</span>
+                          <span className="text-xs font-semibold text-slate-900">{cat.name}</span>
                         </div>
                         <div className="text-right">
-                          <span className="text-xs font-bold text-white font-mono">{formatRupiah(cat.value)}</span>
-                          <span className="text-[10px] text-[#8a8a92] ml-2">({pct}%)</span>
+                          <span className="text-xs font-bold text-slate-900 font-mono">{formatRupiah(cat.value)}</span>
+                          <span className="text-[10px] text-slate-500 ml-2">({pct}%)</span>
                         </div>
                       </div>
                     );
@@ -633,23 +781,23 @@ export const AnalyticsView: React.FC = () => {
 
           {/* DIAGRAM 4: Terpadu (Composed Chart - Omset Batang + Margin Line) */}
           {chartType === 'composed' && (
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-4">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-bold text-white">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Omset Penjualan vs Rasio Margin Laba (%) ({chartTimeframe === 'day' ? 'Harian' : chartTimeframe === 'week' ? 'Mingguan' : chartTimeframe === 'month' ? 'Bulanan' : 'Tahunan'})
                   </h3>
-                  <p className="text-xs text-[#8a8a92]">Diagram gabungan volume penjualan dengan rasio margin laba UMKM</p>
+                  <p className="text-xs text-slate-500">Diagram gabungan volume penjualan dengan rasio margin laba UMKM</p>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-medium">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#f2aa4b]" />
-                    <span className="text-stone-300">Omset (Rp)</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                    <span className="text-slate-600">Omset (Rp)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                    <span className="text-stone-300">Margin Laba (%)</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-900" />
+                    <span className="text-slate-600">Margin Laba (%)</span>
                   </div>
                 </div>
               </div>
@@ -657,10 +805,10 @@ export const AnalyticsView: React.FC = () => {
               <div className="h-64 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={activeChartData}>
-                    <XAxis dataKey="period" stroke="#71717a" fontSize={11} tickLine={false} />
+                    <XAxis dataKey="period" stroke="#94a3b8" fontSize={11} tickLine={false} />
                     <YAxis
                       yAxisId="left"
-                      stroke="#71717a"
+                      stroke="#94a3b8"
                       fontSize={10}
                       tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
                       tickLine={false}
@@ -669,24 +817,24 @@ export const AnalyticsView: React.FC = () => {
                     <YAxis
                       yAxisId="right"
                       orientation="right"
-                      stroke="#10b981"
+                      stroke="#0f172a"
                       fontSize={10}
                       tickFormatter={(v) => `${v}%`}
                       tickLine={false}
                       axisLine={false}
                     />
                     <Tooltip
-                      cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
+                      cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
                       content={<CustomComposedTooltip />}
                     />
-                    <Bar yAxisId="left" dataKey="omset" fill="#f2aa4b" radius={[6, 6, 0, 0]} barSize={26} />
+                    <Bar yAxisId="left" dataKey="omset" fill="#84cc16" radius={[6, 6, 0, 0]} barSize={26} />
                     <Line
                       yAxisId="right"
                       type="monotone"
                       dataKey="marginPercent"
-                      stroke="#10b981"
+                      stroke="#0f172a"
                       strokeWidth={3}
-                      dot={{ fill: '#10b981', r: 4 }}
+                      dot={{ fill: '#0f172a', r: 4 }}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -697,34 +845,34 @@ export const AnalyticsView: React.FC = () => {
           {/* Fast-Moving vs Slow-Moving Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Barang Terlaris (Fast-Moving) */}
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-stone-300" />
-                  <h3 className="text-sm font-bold text-white">Barang Terlaris (Fast-Moving)</h3>
+                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-bold text-slate-900">Barang Terlaris (Fast-Moving)</h3>
                 </div>
-                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#242428] text-stone-300 border border-[#303036] font-semibold font-mono">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-semibold font-mono">
                   Penyumbang Laba Utama
                 </span>
               </div>
 
-              <div className="divide-y divide-[#28282e] pt-1">
+              <div className="divide-y divide-slate-100 pt-1">
                 {fastMoving.map((p, idx) => (
                   <div key={p.id} className="py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="w-5 text-center text-xs font-bold text-white font-mono">
+                      <span className="w-5 text-center text-xs font-bold text-slate-900 font-mono">
                         #{idx + 1}
                       </span>
                       <div>
-                        <div className="text-xs font-semibold text-white">{p.name}</div>
-                        <div className="text-[11px] text-[#8a8a92]">{p.category}</div>
+                        <div className="text-xs font-semibold text-slate-900">{p.name}</div>
+                        <div className="text-[11px] text-slate-500">{p.category}</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs font-bold text-white font-mono">
+                      <div className="text-xs font-bold text-slate-900 font-mono">
                         {formatRupiah(p.sellingPrice)}
                       </div>
-                      <div className="text-[10px] text-[#71717a]">Margin: ~35%</div>
+                      <div className="text-[10px] text-slate-400">Margin: ~35%</div>
                     </div>
                   </div>
                 ))}
@@ -732,33 +880,33 @@ export const AnalyticsView: React.FC = () => {
             </div>
 
             {/* Barang Mengendap (Deadstock) */}
-            <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3">
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <AlertOctagon className="w-4 h-4 text-[#f2aa4b]" />
-                  <h3 className="text-sm font-bold text-white">Barang Mengendap (Slow-Moving)</h3>
+                  <AlertOctagon className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-bold text-slate-900">Barang Mengendap (Slow-Moving)</h3>
                 </div>
-                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#282015] text-[#f2aa4b] border border-[#44331e] font-semibold font-mono">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold font-mono">
                   Tertahan: {formatRupiah(totalLockedCapital)}
                 </span>
               </div>
 
-              <div className="divide-y divide-[#28282e] pt-1">
+              <div className="divide-y divide-slate-100 pt-1">
                 {deadstockItems.map((p) => {
                   const lockedAmount = p.currentStock * p.hppAmount;
                   return (
                     <div key={p.id} className="py-3 flex items-center justify-between">
                       <div>
-                        <div className="text-xs font-semibold text-white">{p.name}</div>
-                        <div className="text-[11px] text-[#8a8a92]">
+                        <div className="text-xs font-semibold text-slate-900">{p.name}</div>
+                        <div className="text-[11px] text-slate-500">
                           Sisa: {p.currentStock} {p.unit} di gudang
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs font-bold text-white font-mono">
+                        <div className="text-xs font-bold text-slate-900 font-mono">
                           {formatRupiah(lockedAmount)}
                         </div>
-                        <div className="text-[10px] text-[#71717a]">Modal tertahan</div>
+                        <div className="text-[10px] text-slate-400">Modal tertahan</div>
                       </div>
                     </div>
                   );
@@ -771,22 +919,22 @@ export const AnalyticsView: React.FC = () => {
 
       {/* 4. SEGMENT 2: LAPORAN EVALUASI (100% Editable Document) */}
       {viewSegment === 'report' && (
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-6 space-y-6 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#28282e]">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-6 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#8a8a92] tracking-wider">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 Dokumen Resmi Laba Rugi UMKM
               </span>
               <input
                 type="text"
                 value={reportTitle}
                 onChange={(e) => setReportTitle(e.target.value)}
-                className="w-full bg-transparent font-bold text-lg text-white border-b border-dashed border-white/20 focus:border-white/40 focus:outline-none mt-1"
+                className="w-full bg-transparent font-bold text-lg text-slate-900 border-b border-dashed border-slate-300 focus:border-slate-500 focus:outline-none mt-1"
               />
             </div>
             <button
               onClick={() => exportToOfficialPdf(profile, transactions, products)}
-              className="px-4 py-2 rounded-full bg-white hover:bg-stone-200 text-black font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto"
+              className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Unduh PDF</span>
@@ -794,8 +942,8 @@ export const AnalyticsView: React.FC = () => {
           </div>
 
           {/* Letterhead Preview */}
-          <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32] text-xs text-[#8a8a92] space-y-1">
-            <div className="font-bold text-white text-sm">{profile.storeName.toUpperCase()}</div>
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+            <div className="font-bold text-slate-900 text-sm">{profile.storeName.toUpperCase()}</div>
             <div>{profile.address} | Telp: {profile.phone}</div>
             <div>Penanggung Jawab: {profile.ownerName} | Rekening: {profile.bankAccount}</div>
           </div>
@@ -803,33 +951,33 @@ export const AnalyticsView: React.FC = () => {
           {/* Narrative Textarea (Fully Editable) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-stone-300">
+              <label className="text-xs font-semibold text-slate-700">
                 Narasi Ringkasan Analisis (Bebas Diedit):
               </label>
-              <span className="text-[10px] text-[#71717a]">Dapat diedit langsung sebelum dicetak</span>
+              <span className="text-[10px] text-slate-400">Dapat diedit langsung sebelum dicetak</span>
             </div>
 
             <textarea
               rows={5}
               value={reportNarrative}
               onChange={(e) => setReportNarrative(e.target.value)}
-              className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl p-4 text-xs text-stone-200 leading-relaxed focus:outline-none"
+              className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl p-4 text-xs text-slate-800 leading-relaxed focus:outline-none focus:bg-white"
             />
           </div>
 
           {/* Financial Summary Breakdown */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-            <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32]">
-              <div className="text-[11px] text-[#8a8a92]">Total Pemasukan</div>
-              <div className="text-lg font-bold text-white font-mono">{formatRupiah(monthIncome)}</div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-[11px] text-slate-500">Total Pemasukan</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">{formatRupiah(monthIncome)}</div>
             </div>
-            <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32]">
-              <div className="text-[11px] text-[#8a8a92]">Total Pengeluaran</div>
-              <div className="text-lg font-bold text-rose-400 font-mono">{formatRupiah(monthExpense)}</div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-[11px] text-slate-500">Total Pengeluaran</div>
+              <div className="text-lg font-bold text-rose-600 font-mono">{formatRupiah(monthExpense)}</div>
             </div>
-            <div className="p-4 rounded-xl bg-[#171719] border border-[#2c2c32]">
-              <div className="text-[11px] text-[#8a8a92]">Total Nilai Aset Stok</div>
-              <div className="text-lg font-bold text-white font-mono">{formatRupiah(totalAssetValue)}</div>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-[11px] text-slate-500">Total Nilai Aset Stok</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">{formatRupiah(totalAssetValue)}</div>
             </div>
           </div>
         </div>
@@ -837,14 +985,14 @@ export const AnalyticsView: React.FC = () => {
 
       {/* 5. SEGMENT 3: IN-APP SPREADSHEET (Editable Cells & Add/Delete Rows) */}
       {viewSegment === 'table' && (
-        <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl overflow-hidden shadow-xl space-y-0">
-          <div className="p-4 border-b border-[#28282e] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#171719]">
+        <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs space-y-0">
+          <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-stone-300" />
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-slate-700" />
                 <span>Lembar Kerja Spreadsheet Interaktif</span>
               </h3>
-              <p className="text-xs text-[#8a8a92]">
+              <p className="text-xs text-slate-500">
                 Klik sel mana pun untuk mengubah angka atau teks secara langsung sebelum ekspor Excel
               </p>
             </div>
@@ -852,7 +1000,7 @@ export const AnalyticsView: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleAddSpreadsheetRow}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#202024] hover:bg-[#28282e] text-white border border-[#2c2c32] text-xs font-semibold"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tambah Baris</span>
@@ -860,7 +1008,7 @@ export const AnalyticsView: React.FC = () => {
 
               <button
                 onClick={() => exportToExcel(profile, transactions, products)}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold shadow"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Simpan Excel</span>
@@ -871,7 +1019,7 @@ export const AnalyticsView: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#171719] border-b border-[#28282e] text-[#8a8a92] font-semibold uppercase text-[11px]">
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[11px]">
                   <th className="py-2.5 px-3 w-8">#</th>
                   <th className="py-2.5 px-3">Nama Item / Transaksi</th>
                   <th className="py-2.5 px-3 w-32">Kategori</th>
@@ -883,17 +1031,17 @@ export const AnalyticsView: React.FC = () => {
                   <th className="py-2.5 px-3 w-10 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#242428]">
+              <tbody className="divide-y divide-slate-100">
                 {spreadsheetRows.map((row, idx) => (
-                  <tr key={row.id} className="hover:bg-[#222226]">
-                    <td className="py-2 px-3 text-[#71717a] text-center font-mono">{idx + 1}</td>
+                  <tr key={row.id} className="hover:bg-slate-50">
+                    <td className="py-2 px-3 text-slate-400 text-center font-mono">{idx + 1}</td>
 
                     <td className="py-1 px-2">
                       <input
                         type="text"
                         value={row.item}
                         onChange={(e) => handleUpdateRow(row.id, 'item', e.target.value)}
-                        className="w-full bg-transparent hover:bg-[#171719] focus:bg-[#171719] border border-transparent focus:border-white/30 rounded px-2 py-1 text-white font-medium focus:outline-none"
+                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 font-medium focus:outline-none"
                       />
                     </td>
 
@@ -907,6 +1055,7 @@ export const AnalyticsView: React.FC = () => {
                           { value: 'Bahan Baku', label: 'Bahan Baku' },
                           { value: 'Operasional', label: 'Operasional' },
                         ]}
+                        buttonClassName="bg-white border-slate-200 text-slate-800"
                       />
                     </td>
 
@@ -917,7 +1066,7 @@ export const AnalyticsView: React.FC = () => {
                         onChange={(e) =>
                           handleUpdateRow(row.id, 'qty', parseInt(e.target.value) || 0)
                         }
-                        className="w-full bg-transparent hover:bg-[#171719] focus:bg-[#171719] border border-transparent focus:border-white/30 rounded px-2 py-1 text-white text-center focus:outline-none font-bold font-mono"
+                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 text-center focus:outline-none font-bold font-mono"
                       />
                     </td>
 
@@ -926,7 +1075,7 @@ export const AnalyticsView: React.FC = () => {
                         type="text"
                         value={row.unit}
                         onChange={(e) => handleUpdateRow(row.id, 'unit', e.target.value)}
-                        className="w-full bg-transparent hover:bg-[#171719] focus:bg-[#171719] border border-transparent focus:border-white/30 rounded px-2 py-1 text-stone-400 text-center focus:outline-none"
+                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-600 text-center focus:outline-none"
                       />
                     </td>
 
@@ -937,11 +1086,11 @@ export const AnalyticsView: React.FC = () => {
                         onChange={(e) =>
                           handleUpdateRow(row.id, 'hargaSatuan', parseInt(e.target.value) || 0)
                         }
-                        className="w-full bg-transparent hover:bg-[#171719] focus:bg-[#171719] border border-transparent focus:border-white/30 rounded px-2 py-1 text-white text-right focus:outline-none font-semibold font-mono"
+                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 text-right focus:outline-none font-semibold font-mono"
                       />
                     </td>
 
-                    <td className="py-2 px-3 text-right font-bold text-white font-mono">
+                    <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
                       {formatRupiah(row.subtotal)}
                     </td>
 
@@ -950,14 +1099,14 @@ export const AnalyticsView: React.FC = () => {
                         type="text"
                         value={row.keterangan}
                         onChange={(e) => handleUpdateRow(row.id, 'keterangan', e.target.value)}
-                        className="w-full bg-transparent hover:bg-[#171719] focus:bg-[#171719] border border-transparent focus:border-white/30 rounded px-2 py-1 text-stone-300 focus:outline-none"
+                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-600 focus:outline-none"
                       />
                     </td>
 
                     <td className="py-2 px-3 text-center">
                       <button
                         onClick={() => handleDeleteSpreadsheetRow(row.id)}
-                        className="p-1 rounded text-stone-500 hover:text-rose-400"
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
                         title="Hapus baris"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -969,11 +1118,11 @@ export const AnalyticsView: React.FC = () => {
             </table>
           </div>
 
-          <div className="p-4 bg-[#171719] border-t border-[#28282e] flex items-center justify-between text-xs">
-            <span className="text-[#8a8a92]">
+          <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between text-xs">
+            <span className="text-slate-500">
               Total {spreadsheetRows.length} baris lembar kerja
             </span>
-            <div className="text-sm font-bold text-white font-mono">
+            <div className="text-sm font-bold text-slate-900 font-mono">
               Total: <span>{formatRupiah(spreadsheetTotal)}</span>
             </div>
           </div>

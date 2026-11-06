@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const PromoView: React.FC = () => {
-  const { products, selectedProductForPromo } = useKasra();
+  const { products, selectedProductForPromo, updateProduct, quickAdjustStock } = useKasra();
 
   // Active product on canvas
   const [activeProduct, setActiveProduct] = useState<Product>(
@@ -37,6 +37,7 @@ export const PromoView: React.FC = () => {
     Math.round((selectedProductForPromo || products[0])?.sellingPrice * 0.75).toString()
   );
   const [bgColor, setBgColor] = useState('#141417');
+  const [appliedToast, setAppliedToast] = useState('');
 
   // AI-generated WA caption
   const [aiCaption, setAiCaption] = useState('');
@@ -214,17 +215,17 @@ export const PromoView: React.FC = () => {
       {/* 1. Header & Quick Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Promosi Studio & Pembuat Poster
           </h1>
-          <p className="text-xs text-[#8a8a92] mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Kanvas desain promosi interaktif (100% dapat diedit) & pembuat pesan siaran WhatsApp
           </p>
         </div>
 
         <button
           onClick={handleDownloadPoster}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white hover:bg-stone-200 text-black text-xs font-bold transition-all shadow-md active:scale-95 self-start sm:self-auto"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95 self-start sm:self-auto"
         >
           <Download className="w-4 h-4" />
           <span>Unduh Desain (HD PNG)</span>
@@ -236,9 +237,9 @@ export const PromoView: React.FC = () => {
         {/* Left Controls Column (5 cols) */}
         <div className="lg:col-span-5 space-y-5">
           {/* Pick Product from Storage */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3">
-            <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Package className="w-4 h-4 text-stone-300" />
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3 shadow-xs">
+            <label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Package className="w-4 h-4 text-slate-600" />
               <span>1. Pilih Barang dari Gudang</span>
             </label>
 
@@ -255,24 +256,25 @@ export const PromoView: React.FC = () => {
                 value: p.id,
                 label: `${p.name} — ${formatRupiah(p.sellingPrice)} (${p.currentStock} ${p.unit})`,
               }))}
+              buttonClassName="bg-slate-50 border-slate-200 text-slate-900 py-2.5"
             />
           </div>
 
           {/* Format & Theme Selection */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3">
-            <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Layers className="w-4 h-4 text-stone-300" />
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3 shadow-xs">
+            <label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Layers className="w-4 h-4 text-slate-600" />
               <span>2. Format Ukuran & Tema</span>
             </label>
 
-            <div className="grid grid-cols-2 gap-2 p-1 bg-[#171719] rounded-xl border border-[#2c2c32] text-xs font-medium">
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-medium">
               <button
                 type="button"
                 onClick={() => setCanvasFormat('square')}
                 className={`py-1.5 rounded-lg transition-colors ${
                   canvasFormat === 'square'
-                    ? 'bg-white text-black font-bold shadow'
-                    : 'text-stone-400 hover:text-white'
+                    ? 'bg-white text-slate-900 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Persegi (1:1 Feed / WA)
@@ -282,8 +284,8 @@ export const PromoView: React.FC = () => {
                 onClick={() => setCanvasFormat('story')}
                 className={`py-1.5 rounded-lg transition-colors ${
                   canvasFormat === 'story'
-                    ? 'bg-white text-black font-bold shadow'
-                    : 'text-stone-400 hover:text-white'
+                    ? 'bg-white text-slate-900 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Vertikal (9:16 Story)
@@ -296,8 +298,8 @@ export const PromoView: React.FC = () => {
                 onClick={() => setPromoTheme('flash_sale')}
                 className={`p-2.5 rounded-xl border text-left transition-colors ${
                   promoTheme === 'flash_sale'
-                    ? 'bg-[#2a171c] border-[#48202a] text-rose-300 font-bold'
-                    : 'bg-[#171719] border-[#2c2c32] text-stone-400'
+                    ? 'bg-rose-50 border-rose-200 text-rose-700 font-bold shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="text-[10px]">🔥 Diskon</div>
@@ -309,8 +311,8 @@ export const PromoView: React.FC = () => {
                 onClick={() => setPromoTheme('new_item')}
                 className={`p-2.5 rounded-xl border text-left transition-colors ${
                   promoTheme === 'new_item'
-                    ? 'bg-[#242428] border-white/20 text-white font-bold'
-                    : 'bg-[#171719] border-[#2c2c32] text-stone-400'
+                    ? 'bg-slate-900 border-slate-900 text-white font-bold shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="text-[10px]">✨ Baru</div>
@@ -322,8 +324,8 @@ export const PromoView: React.FC = () => {
                 onClick={() => setPromoTheme('special_deal')}
                 className={`p-2.5 rounded-xl border text-left transition-colors ${
                   promoTheme === 'special_deal'
-                    ? 'bg-[#282015] border-[#44331e] text-[#f2aa4b] font-bold'
-                    : 'bg-[#171719] border-[#2c2c32] text-stone-400'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800 font-bold shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <div className="text-[10px]">🎁 Hemat</div>
@@ -333,47 +335,47 @@ export const PromoView: React.FC = () => {
           </div>
 
           {/* Interactive Visual Customizer */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3.5">
-            <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Type className="w-4 h-4 text-stone-300" />
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3.5 shadow-xs">
+            <label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Type className="w-4 h-4 text-slate-600" />
               <span>3. Kustomisasi Teks & Harga</span>
             </label>
 
             <div className="space-y-1">
-              <label className="text-[11px] text-[#8a8a92]">Judul Headline Poster</label>
+              <label className="text-[11px] text-slate-500 font-medium">Judul Headline Poster</label>
               <input
                 type="text"
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[11px] text-[#8a8a92]">Teks Badge / Pita</label>
+                <label className="text-[11px] text-slate-500 font-medium">Teks Badge / Pita</label>
                 <input
                   type="text"
                   value={badgeText}
                   onChange={(e) => setBadgeText(e.target.value)}
-                  className="w-full bg-[#171719] border border-[#2c2c32] rounded-xl px-3 py-2 text-xs text-white font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-bold focus:bg-white"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-[#8a8a92]">Harga Coret / Diskon</label>
+                <label className="text-[11px] text-slate-500 font-medium">Harga Coret / Diskon</label>
                 <input
                   type="number"
                   value={customPrice}
                   onChange={(e) => setCustomPrice(e.target.value)}
-                  className="w-full bg-[#171719] border border-[#2c2c32] rounded-xl px-3 py-2 text-xs text-white font-mono font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold focus:bg-white"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] text-[#8a8a92] flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5 text-stone-400" />
+              <label className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-slate-500" />
                 <span>Warna Latar Belakang Kanvas</span>
               </label>
               <div className="flex items-center gap-2.5">
@@ -389,7 +391,7 @@ export const PromoView: React.FC = () => {
                     onClick={() => setBgColor(item.color)}
                     style={{ backgroundColor: item.color }}
                     className={`w-7 h-7 rounded-full border-2 transition-transform ${
-                      bgColor === item.color ? 'border-white scale-110' : 'border-[#3a3a40]'
+                      bgColor === item.color ? 'border-slate-900 scale-110 shadow-sm' : 'border-slate-300'
                     }`}
                     title={item.label}
                   />
@@ -397,16 +399,59 @@ export const PromoView: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Quick Apply to Store & POS */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Aksi Terhubung dengan Toko</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  const pNum = parseInt(customPrice, 10);
+                  if (pNum > 0) {
+                    updateProduct(activeProduct.id, { sellingPrice: pNum });
+                    setActiveProduct({ ...activeProduct, sellingPrice: pNum });
+                    setAppliedToast('Harga promo berhasil diterapkan ke etalase toko!');
+                    setTimeout(() => setAppliedToast(''), 3000);
+                  }
+                }}
+                className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 font-semibold text-slate-800 transition-colors text-left"
+              >
+                🏷️ Terapkan ke Harga Jual Toko
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const pNum = parseInt(customPrice, 10) || activeProduct.sellingPrice;
+                  quickAdjustStock(activeProduct.id, -1, `Penjualan Promo ${headline} (${activeProduct.name})`);
+                  setAppliedToast('1 unit penjualan promo berhasil dicatat ke Buku Kas & Gudang!');
+                  setTimeout(() => setAppliedToast(''), 3000);
+                }}
+                className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-semibold text-emerald-800 transition-colors text-left"
+              >
+                ⚡ Catat Penjualan Promo (1x)
+              </button>
+            </div>
+            {appliedToast && (
+              <p className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg animate-in fade-in">
+                ✓ {appliedToast}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Right Canvas & Copywriting Column (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 flex flex-col items-center justify-center shadow-2xl relative">
-            <span className="text-[11px] text-[#71717a] mb-2 font-mono">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 flex flex-col items-center justify-center shadow-xs relative">
+            <span className="text-[11px] text-slate-400 mb-2 font-mono">
               Pratinjau Kanvas ({canvasFormat === 'square' ? '600 x 600 px' : '540 x 960 px'})
             </span>
 
-            <div className="overflow-hidden rounded-2xl shadow-2xl border border-[#2c2c32]">
+            <div className="overflow-hidden rounded-2xl shadow-xl border border-slate-200">
               <canvas
                 ref={canvasRef}
                 className="max-h-[460px] w-auto object-contain block mx-auto"
@@ -415,20 +460,20 @@ export const PromoView: React.FC = () => {
           </div>
 
           {/* Copywriting Box */}
-          <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl p-5 space-y-3">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4 text-stone-300" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                <Megaphone className="w-4 h-4 text-slate-700" />
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                   Pesan Broadcast WhatsApp Toko
                 </h3>
               </div>
 
               <button
                 onClick={handleCopyCaption}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#202024] hover:bg-[#28282e] text-white border border-[#2c2c32] text-xs font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs"
               >
-                {isCopied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{isCopied ? 'Tersalin!' : 'Salin Teks'}</span>
               </button>
             </div>
@@ -437,7 +482,7 @@ export const PromoView: React.FC = () => {
               rows={6}
               value={aiCaption}
               onChange={(e) => setAiCaption(e.target.value)}
-              className="w-full bg-[#171719] border border-[#2c2c32] focus:border-white/30 rounded-xl p-3.5 text-xs text-stone-200 leading-relaxed focus:outline-none font-mono"
+              className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl p-3.5 text-xs text-slate-800 leading-relaxed focus:outline-none focus:bg-white font-mono"
             />
           </div>
         </div>

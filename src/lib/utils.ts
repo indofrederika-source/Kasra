@@ -19,6 +19,25 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat('id-ID').format(num);
 }
 
+/**
+ * Format string or number with dot thousand separators: e.g. "18000" -> "18.000"
+ */
+export function formatThousands(val: string | number | null | undefined): string {
+  if (val === '' || val === null || val === undefined) return '';
+  const clean = val.toString().replace(/\D/g, '');
+  if (!clean) return '';
+  return clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/**
+ * Parse a dot-formatted string into integer: e.g. "18.000" -> 18000
+ */
+export function parseThousands(val: string | number | null | undefined): number {
+  if (!val) return 0;
+  const clean = val.toString().replace(/\./g, '').replace(/\D/g, '');
+  return parseInt(clean, 10) || 0;
+}
+
 export function formatDateIndo(dateStr: string): string {
   try {
     const date = new Date(dateStr);
@@ -86,7 +105,7 @@ export function getExpiryStatus(expiryDate?: string | null, referenceDateStr?: s
     };
   }
 
-  const today = referenceDateStr ? new Date(referenceDateStr) : new Date('2026-10-26');
+  const today = referenceDateStr ? new Date(referenceDateStr) : new Date();
   today.setHours(0, 0, 0, 0);
   const exp = new Date(expiryDate);
   exp.setHours(0, 0, 0, 0);

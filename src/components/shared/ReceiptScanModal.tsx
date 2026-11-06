@@ -46,24 +46,24 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 bg-[#171719] border-b border-[#28282e] flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#242428] border border-[#303036] flex items-center justify-center text-stone-200">
+            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
               <ScanLine className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Scan Foto Nota Belanja Grosir</h2>
-              <p className="text-[11px] text-[#8a8a92]">
+              <h2 className="text-sm font-bold text-slate-900">Scan Foto Nota Belanja Grosir</h2>
+              <p className="text-[11px] text-slate-500">
                 AI otomatis membaca baris nota untuk update Kas Keluar & Stok Masuk
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-stone-400 hover:text-white"
+            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -71,7 +71,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
 
         {/* Upload & Preview Area */}
         <div className="p-6 space-y-4">
-          <label className="border-2 border-dashed border-[#2c2c32] hover:border-white/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-[#171719] group">
+          <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50 hover:bg-slate-50/80 group">
             <input
               type="file"
               accept="image/*"
@@ -84,33 +84,33 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
                 <img
                   src={selectedImage}
                   alt="Preview Nota"
-                  className="max-h-48 rounded-lg object-contain mx-auto border border-[#2c2c32]"
+                  className="max-h-48 rounded-lg object-contain mx-auto border border-slate-200 shadow-xs"
                 />
-                <p className="text-xs text-stone-300 font-medium">{receiptName}</p>
-                <p className="text-[11px] text-[#71717a]">Klik untuk mengganti gambar</p>
+                <p className="text-xs text-slate-800 font-medium">{receiptName}</p>
+                <p className="text-[11px] text-slate-400">Klik untuk mengganti gambar</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="w-12 h-12 rounded-full bg-[#202024] border border-[#2c2c32] flex items-center justify-center mx-auto text-stone-400 group-hover:text-white transition-colors">
+                <div className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto text-slate-600 group-hover:text-slate-900 shadow-2xs transition-colors">
                   <Upload className="w-5 h-5" />
                 </div>
-                <div className="text-xs font-semibold text-stone-200">
+                <div className="text-xs font-semibold text-slate-800">
                   Ambil Foto Nota atau Unggah Berkas
                 </div>
-                <p className="text-[11px] text-[#71717a]">Mendukung format JPG, PNG, atau HEIC dari ponsel</p>
+                <p className="text-[11px] text-slate-400">Mendukung format JPG, PNG, atau HEIC dari ponsel</p>
               </div>
             )}
           </label>
 
           {/* 1-Click Sample Nota Button */}
-          <div className="p-3.5 rounded-xl bg-[#171719] border border-[#2c2c32] flex items-center justify-between">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <FileText className="w-4 h-4 text-stone-300 shrink-0" />
+              <FileText className="w-4 h-4 text-slate-600 shrink-0" />
               <div>
-                <div className="text-xs font-semibold text-stone-200">
+                <div className="text-xs font-semibold text-slate-800">
                   Gunakan Contoh Nota Grosir Agen Berkah
                 </div>
-                <div className="text-[11px] text-[#8a8a92]">
+                <div className="text-[11px] text-slate-500">
                   (Susu Diamond 12L, Gula Aren 6L, Cup 100 pcs)
                 </div>
               </div>
@@ -122,7 +122,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
                 );
                 setReceiptName('Nota_Grosir_Agen_Berkah_26Okt.jpg');
               }}
-              className="px-3 py-1.5 rounded-full bg-[#202024] hover:bg-[#28282e] text-white border border-[#2c2c32] text-[11px] font-medium transition-colors"
+              className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold transition-colors shadow-2xs"
             >
               Pilih Contoh
             </button>
@@ -130,10 +130,10 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-[#171719] border-t border-[#28282e] flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-full text-xs font-medium text-stone-400 hover:text-white"
+            className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
           >
             Batal
           </button>
@@ -141,7 +141,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
           <button
             onClick={handleSimulateScan}
             disabled={isProcessing}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-white hover:bg-stone-200 disabled:opacity-40 text-black text-xs font-bold transition-all shadow-md active:scale-95"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
           >
             <span>{isProcessing ? 'Memproses Nota...' : 'Pindai Nota'}</span>
           </button>

@@ -20,7 +20,7 @@ function KasraAppContent() {
   const [isScanOpen, setIsScanOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#121214] text-[#f4f4f6]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#F8FAFC] text-slate-900">
       {/* 1. Left Sidebar Navigation (Desktop) & Bottom Bar (Mobile) */}
       <SidebarRail />
 
@@ -84,7 +84,7 @@ export default function KasraPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="h-screen w-screen bg-[#121214] flex items-center justify-center text-[#8a8a92] text-xs font-mono">
+        <div className="h-screen w-screen bg-[#F8FAFC] flex items-center justify-center text-slate-500 text-xs font-mono">
           Memuat Workspace KASRA...
         </div>
       }

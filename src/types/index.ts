@@ -34,7 +34,7 @@ export interface Product {
   currentStock: number;
   minStockAlert: number;
   unit: ProductUnit | string;
-  purchaseDate: string; // YYYY-MM-DD
+  purchaseDate?: string; // YYYY-MM-DD
   expiryDate?: string | null; // YYYY-MM-DD (earliest expiring batch)
   batches?: StockBatch[]; // Pelacakan batch kadaluarsa berbeda per inputan
   hppAmount: number;
@@ -60,6 +60,7 @@ export interface Transaction {
   receiptUrl?: string;
   relatedProductId?: string;
   relatedQuantity?: number;
+  relatedMovementId?: string;
   createdAt: string;
 }
 
@@ -80,6 +81,7 @@ export interface StockMovement {
   batchCode?: string; // e.g. "Batch 24 Oktober 2026"
   batchExpiry?: string | null;
   financialAmount?: number;
+  relatedTransactionId?: string;
   source?: string; // "Voice Mic", "Kasir POS", "Input Manual Gudang", etc.
   notes: string;
   createdAt: string;

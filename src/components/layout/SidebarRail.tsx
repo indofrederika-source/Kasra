@@ -11,7 +11,6 @@ import {
   Megaphone,
   Settings,
   HelpCircle,
-  Plus,
 } from 'lucide-react';
 
 interface TabItem {
@@ -66,18 +65,18 @@ export const SidebarRail: React.FC = () => {
 
   return (
     <>
-      {/* Desktop Left Icon Rail (Haulix Style - Slim Dark Graphite) */}
-      <aside className="hidden md:flex flex-col w-[76px] bg-[#171719] border-r border-[#262629] py-6 px-3 shrink-0 justify-between items-center select-none z-30">
+      {/* Desktop Left Icon Rail (ACRU Style - Clean Light Minimalist) */}
+      <aside className="hidden md:flex flex-col w-[76px] bg-white border-r border-slate-200/80 py-6 px-3 shrink-0 justify-between items-center select-none z-30 shadow-[1px_0_10px_rgba(0,0,0,0.02)]">
         <div className="flex flex-col items-center gap-7 w-full">
-          {/* Brand Mark (Haulix Pale-Lime Plus Glyph) */}
+          {/* Brand Mark (ACRU Style - Clean Slate Square with Lime Monogram) */}
           <div
             onClick={() => setActiveTab('dashboard')}
-            className="w-11 h-11 rounded-2xl bg-[#202024] border border-[#2c2c32] hover:border-white/20 flex items-center justify-center cursor-pointer transition-all shadow-sm group"
+            className="w-11 h-11 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-slate-800 flex items-center justify-center cursor-pointer transition-all shadow-sm group"
             title={`${profile.storeName} — KASRA Workspace`}
           >
-            <div className="w-5 h-5 rounded flex items-center justify-center text-[#f4feae] group-hover:scale-110 transition-transform">
-              <Plus className="w-5 h-5 stroke-[3]" />
-            </div>
+            <span className="text-lime-400 font-black text-lg tracking-tight font-sans group-hover:scale-110 transition-transform select-none">
+              K
+            </span>
           </div>
 
           {/* Navigation Icon List */}
@@ -93,19 +92,19 @@ export const SidebarRail: React.FC = () => {
                   title={item.label}
                   className={`relative w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 group ${
                     isActive
-                      ? 'bg-white text-black shadow-lg shadow-black/50 scale-100'
-                      : 'text-[#71717a] hover:text-white hover:bg-white/[0.06]'
+                      ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-100'
+                      : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100/80'
                   }`}
                 >
                   <Icon className="w-5 h-5 stroke-[2]" />
 
                   {/* Notification Dot */}
                   {item.badge && !isActive && (
-                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#f2aa4b] ring-2 ring-[#171719]" />
+                    <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
                   )}
 
                   {/* Tooltip on hover */}
-                  <div className="absolute left-[84px] px-3 py-1.5 rounded-lg bg-[#222226] text-white text-xs font-medium border border-[#303036] opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-50">
+                  <div className="absolute left-[84px] px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-medium border border-slate-800 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-50">
                     {item.label}
                   </div>
                 </button>
@@ -118,7 +117,7 @@ export const SidebarRail: React.FC = () => {
         <div className="flex flex-col items-center gap-3 w-full">
           <button
             onClick={() => setActiveTab('settings')}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#71717a] hover:text-white hover:bg-white/[0.05] transition-colors"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
             title="Pengaturan & Sesi Toko"
           >
             <HelpCircle className="w-4 h-4" />
@@ -127,7 +126,7 @@ export const SidebarRail: React.FC = () => {
       </aside>
 
       {/* Mobile Bottom Dock Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#171719]/95 backdrop-blur-xl border-t border-[#262629] flex items-center justify-around px-2 py-2">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200/80 shadow-lg flex items-center justify-around px-2 py-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -138,13 +137,13 @@ export const SidebarRail: React.FC = () => {
               onClick={() => setActiveTab(item.id)}
               className={`p-2 rounded-full flex flex-col items-center justify-center transition-all relative ${
                 isActive
-                  ? 'bg-white text-black shadow-md'
-                  : 'text-stone-400 hover:text-white'
+                  ? 'bg-slate-900 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
               }`}
             >
               <Icon className="w-5 h-5 stroke-[2]" />
               {item.badge && !isActive && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400" />
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
               )}
             </button>
           );
