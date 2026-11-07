@@ -6,7 +6,6 @@
 ![React 19](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?style=for-the-badge&logo=tailwind-css)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)
-![License](https://img.shields.io/badge/License-MIT-amber?style=for-the-badge)
 
 **Sistem Pembukuan Kas Digital, Manajemen Gudang Multi-Batch FEFO, dan Studio Analisis Keuangan Berbasis AI untuk UMKM Modern.**
 
