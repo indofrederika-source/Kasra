@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'KASRA — Smart UMKM Workspace & Editable AI Copilot',
-  description: 'Kinetic AI System for Retail Analytics & Accounting - Clean SaaS & Human-In-The-Loop AI for Indonesian UMKM',
+  title: 'KASRA — Sistem Kasir, Keuangan & Gudang Pintar UMKM',
+  description:
+    'Sistem pencatatan buku kas, analitik keuangan, notifikasi pintar, dan inventaris gudang terintegrasi untuk UMKM Indonesia',
 };
 
 export default function RootLayout({

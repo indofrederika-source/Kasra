@@ -193,7 +193,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            <h2 className="text-sm font-bold tracking-tight">Add transaction</h2>
+            <h2 className="text-sm font-bold tracking-tight">Catat Transaksi</h2>
 
             <button
               type="button"
@@ -214,9 +214,9 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             </button>
           </div>
 
-          {/* 2. Segmented Type Switcher (Spent | Income | +Stok) */}
+          {/* 2. Segmented Type Switcher (Pengeluaran | Pemasukan | +Stok) */}
           <div
-            className={`grid grid-cols-3 p-1 rounded-full border text-xs font-semibold ${
+            className={`grid grid-cols-3 p-1 rounded-full border text-[11px] sm:text-xs font-semibold ${
               isDark
                 ? 'bg-[#172A57] border-[#345294]'
                 : 'bg-slate-100 border-slate-200/60'
@@ -228,7 +228,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                 setTrxType('expense');
                 if (selectedTileId === 'food') setSelectedTileId('grocery');
               }}
-              className={`py-2 rounded-full transition-all cursor-pointer ${
+              className={`py-2 px-2 rounded-full transition-all whitespace-nowrap cursor-pointer ${
                 trxType === 'expense'
                   ? isDark
                     ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-sm'
@@ -236,7 +236,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                   : 'text-slate-400 hover:text-slate-600'
               }`}
             >
-              Spent (Keluar)
+              Pengeluaran
             </button>
             <button
               type="button"
@@ -244,7 +244,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                 setTrxType('income');
                 if (selectedTileId === 'grocery') setSelectedTileId('food');
               }}
-              className={`py-2 rounded-full transition-all cursor-pointer ${
+              className={`py-2 px-2 rounded-full transition-all whitespace-nowrap cursor-pointer ${
                 trxType === 'income'
                   ? isDark
                     ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-sm'
@@ -252,12 +252,12 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                   : 'text-slate-400 hover:text-slate-600'
               }`}
             >
-              Income (Masuk)
+              Pemasukan
             </button>
             <button
               type="button"
               onClick={() => setLinkProduct((prev) => !prev)}
-              className={`py-2 rounded-full transition-all flex items-center justify-center gap-1 cursor-pointer ${
+              className={`py-2 px-2 rounded-full transition-all flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer ${
                 linkProduct
                   ? isDark
                     ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-sm'
@@ -265,7 +265,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                   : 'text-slate-400 hover:text-slate-600'
               }`}
             >
-              <Package className="w-3 h-3" />
+              <Package className="w-3 h-3 shrink-0" />
               <span>+Stok</span>
             </button>
           </div>
@@ -319,7 +319,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] opacity-75 block mb-1">Qty</label>
+                    <label className="text-[10px] opacity-75 block mb-1">Jumlah</label>
                     <input
                       type="number"
                       min="1"
@@ -447,7 +447,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                     onOpenScan();
                   }
                 }}
-                title="Scan Struk / Nota"
+                title="Pindai Struk / Nota"
                 className={`p-2 rounded-xl transition-colors cursor-pointer ${
                   isDark
                     ? 'hover:bg-[#22396F] text-[#FCF1D0]'
@@ -631,7 +631,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                 : 'bg-[#18181B] hover:bg-slate-800 text-white shadow-slate-900/20'
             }`}
           >
-            Save {currentAmount > 0 ? `(${formatRupiah(currentAmount)})` : ''}
+            Simpan Transaksi {currentAmount > 0 ? `(${formatRupiah(currentAmount)})` : ''}
           </button>
         </div>
       </div>

@@ -159,38 +159,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
         <div className="w-[450px] h-[450px] bg-slate-200/50 rounded-full blur-3xl translate-y-32 -translate-x-32" />
       </div>
 
-      {/* Top-Right Theme Switcher (Dark UI Option 1 / Light UI Option 2) */}
+      {/* Top-Right Compact Icon-Only Theme Switcher */}
       <div className="fixed top-5 right-5 z-30">
         <div
-          className={`inline-flex items-center p-1 rounded-full border shadow-md text-xs font-bold ${
+          className={`inline-flex items-center gap-0.5 p-1 rounded-full border shadow-md ${
             isDark
               ? 'bg-[#22396F] border-[#345294]'
               : 'bg-white border-slate-200'
           }`}
+          role="group"
+          aria-label="Pilih Tema Tampilan"
         >
           <button
             type="button"
             onClick={() => handleToggleTheme(true)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+            title="Tema Gelap"
+            aria-label="Tema Gelap"
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               isDark
-                ? 'bg-[#FCF1D0] text-[#0D1C42] font-extrabold'
+                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs'
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             <Moon className="w-3.5 h-3.5" />
-            <span>Dark UI</span>
           </button>
           <button
             type="button"
             onClick={() => handleToggleTheme(false)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+            title="Tema Terang"
+            aria-label="Tema Terang"
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               !isDark
-                ? 'bg-[#311068] text-white font-extrabold'
+                ? 'bg-[#311068] text-white shadow-xs'
                 : 'text-[#FCF1D0]/75 hover:text-[#FCF1D0]'
             }`}
           >
             <Sun className="w-3.5 h-3.5" />
-            <span>Light UI</span>
           </button>
         </div>
       </div>
@@ -209,7 +213,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
             <KasraLogo className={`w-8 h-8 ${isDark ? 'text-[#FCF1D0]' : 'text-white'}`} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            KASRA Workspace
+            Ruang Kerja KASRA
           </h1>
           <p className="text-xs text-slate-500 mt-1 max-w-xs">
             Asisten Finansial & Gudang Pintar Terintegrasi untuk UMKM
@@ -422,9 +426,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
                     <option value="">Pilih nanti di Pengaturan Toko</option>
                     <option value="Kafe & Minuman">Kafe & Minuman</option>
                     <option value="Kuliner & Rumah Makan">Kuliner & Resto</option>
-                    <option value="Toko Kelontong & Sembako">Retail / Sembako</option>
-                    <option value="Bakery & Pastry">Bakery & Pastry</option>
-                    <option value="Fashion & Aksesoris">Fashion / Pakaian</option>
+                    <option value="Toko Kelontong & Sembako">Ritel / Sembako</option>
+                    <option value="Roti & Kue">Roti & Kue</option>
+                    <option value="Busana & Pakaian">Busana & Pakaian</option>
                     <option value="Jasa & Layanan">Jasa & Layanan</option>
                     <option value="__custom__">Ketik kategori sendiri...</option>
                   </select>
@@ -560,7 +564,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>Daftar & Buat Workspace Toko</span>
+                    <span>Daftar & Buat Ruang Kerja Toko</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}

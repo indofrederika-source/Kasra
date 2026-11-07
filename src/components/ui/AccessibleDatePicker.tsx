@@ -418,7 +418,7 @@ export const AccessibleDatePicker: React.FC<AccessibleDatePickerProps> = ({
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
             }`}
           >
-            {daysDiff < 0 ? 'Lewat Expired' : daysDiff === 0 ? 'Hari ini' : `${daysDiff} hr lagi`}
+            {daysDiff < 0 ? 'Sudah Kedaluwarsa' : daysDiff === 0 ? 'Hari ini' : `${daysDiff} hr lagi`}
           </span>
         )}
       </div>

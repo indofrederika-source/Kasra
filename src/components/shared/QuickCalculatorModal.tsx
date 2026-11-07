@@ -33,7 +33,7 @@ function cleanFloat(n: number): number {
 }
 
 function formatCalcNumber(raw: string): string {
-  if (raw === 'Error') return 'Error';
+  if (raw === 'Error') return 'Galat';
   if (!raw) return '';
   if (raw === '-') return '-';
 

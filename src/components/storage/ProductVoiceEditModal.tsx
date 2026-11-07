@@ -414,7 +414,7 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
                     <span className="text-slate-700 font-medium">
                       &quot;Ganti tanggal kadaluarsa jadi 25 November 2026&quot;
                     </span>
-                    , <span className="text-slate-700 font-medium">&quot;Perpanjang expired 7 hari&quot;</span>, atau{' '}
+                    , <span className="text-slate-700 font-medium">&quot;Perpanjang masa kedaluwarsa 7 hari&quot;</span>, atau{' '}
                     <span className="text-slate-700 font-medium">&quot;Hapus tanggal kadaluarsa&quot;</span>
                   </li>
                   <li>

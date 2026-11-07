@@ -149,3 +149,41 @@ export interface ConfirmationDraft {
 }
 
 export type TabType = 'dashboard' | 'cash' | 'storage' | 'analytics' | 'settings';
+
+export type NotificationCategory =
+  | 'cash_income'
+  | 'cash_expense'
+  | 'stock_out'
+  | 'stock_low'
+  | 'expiry_expired'
+  | 'expiry_near'
+  | 'stock_mutation'
+  | 'finance_alert';
+
+export type NotificationSeverity = 'success' | 'danger' | 'warning' | 'info';
+
+export interface AppNotification {
+  id: string;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  title: string;
+  message: string;
+  createdAt: string;
+  timestamp: number;
+  read: boolean;
+  targetTab: TabType;
+  dedupKey?: string;
+}
+
+export interface NotificationPreferences {
+  inAppEnabled: boolean;
+  browserPushEnabled: boolean;
+  cashIncome: boolean;
+  cashExpense: boolean;
+  stockOut: boolean;
+  stockLow: boolean;
+  expiryExpired: boolean;
+  expiryNear: boolean;
+  stockMutation: boolean;
+  financeAlert: boolean;
+}

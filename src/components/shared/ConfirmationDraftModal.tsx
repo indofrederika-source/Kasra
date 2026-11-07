@@ -685,7 +685,7 @@ export const ConfirmationDraftModal: React.FC<ConfirmationDraftModalProps> = ({ 
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
                   <Package className="w-4 h-4 text-slate-600" />
-                  <span>2. Perubahan Stok Gudang ({editableStock.length} Item)</span>
+                  <span>2. Perubahan Stok Gudang ({editableStock.length} Barang)</span>
                 </h3>
 
                 <div className="space-y-3">
@@ -741,7 +741,7 @@ export const ConfirmationDraftModal: React.FC<ConfirmationDraftModalProps> = ({ 
 
                           <div className="flex items-center gap-2">
                             <div className="flex items-center gap-1 text-xs text-slate-600">
-                              <span>Qty:</span>
+                              <span>Jumlah:</span>
                               <input
                                 type="number"
                                 value={stock.quantityDelta}

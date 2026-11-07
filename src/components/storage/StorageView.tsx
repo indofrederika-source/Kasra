@@ -99,7 +99,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     addStockMovement,
     updateStockMovement,
     deleteStockMovement,
+    theme,
   } = useKasra();
+  const isDark = theme === 'dark';
 
   // Top-Level Mode: 'catalog' (Katalog & Stok Fisik) vs 'movement' (Buku Mutasi Gudang)
   const [activeStorageTab, setActiveStorageTab] = useState<'catalog' | 'movement'>('catalog');
@@ -682,7 +684,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
               >
                 <ScanLine className="w-3.5 h-3.5 text-slate-500" />
-                <span>Scan Nota Kulakan</span>
+                <span>Pindai Nota Kulakan</span>
               </button>
             </>
           ) : (
@@ -698,7 +700,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
           <button
             onClick={() => openVoiceProductEditor(null)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all shadow-xs cursor-pointer"
-            title="Mic khusus untuk mengubah harga jual, modal, tanggal kadaluarsa, lokasi, kategori, dan info barang lainnya"
+            title="Suara khusus untuk mengubah harga jual, modal, tanggal kedaluwarsa, lokasi, kategori, dan info barang lainnya"
           >
             <Mic className="w-3.5 h-3.5 text-indigo-600" />
             <SlidersHorizontal className="w-3 h-3 text-indigo-500" />
@@ -717,30 +719,34 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
       {/* 2. Top Segmented Mode Switcher (Katalog & Stok Fisik vs Buku Mutasi Gudang) */}
       <div className="flex items-center justify-center sm:justify-start">
-        <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200/80 rounded-full shadow-inner">
+        <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 border border-slate-200/80 rounded-3xl sm:rounded-full shadow-inner max-w-full">
           <button
             type="button"
             onClick={() => setActiveStorageTab('catalog')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               activeStorageTab === 'catalog'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                ? isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-extrabold'
+                  : 'bg-white text-slate-900 shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Boxes className="w-3.5 h-3.5" />
+            <Boxes className="w-3.5 h-3.5 shrink-0" />
             <span>Katalog & Stok Fisik ({products.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveStorageTab('movement')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               activeStorageTab === 'movement'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                ? isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-extrabold'
+                  : 'bg-white text-slate-900 shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock className="w-3.5 h-3.5 shrink-0" />
             <span>Buku Mutasi Gudang ({stockMovements.length})</span>
           </button>
         </div>
@@ -766,7 +772,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
               <div className="text-[11px] text-slate-500 font-medium">Stok Kritis / Menipis</div>
               <div className="text-xl font-bold text-slate-900 font-mono">{criticalStockCount} Barang</div>
-              <div className="text-[10px] text-rose-500 font-medium">Perlu restock segera</div>
+              <div className="text-[10px] text-rose-500 font-medium">Perlu isi stok segera</div>
             </div>
 
             <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-1 transition-colors shadow-xs">
@@ -1082,38 +1088,54 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
                 const expStatus = getExpiryStatus(p.expiryDate);
 
-                // 4-Level Indicator (Merah, Oren, Kuning, Hijau)
+                // 4-Level Indicator (Merah, Oren, Kuning, Hijau) — Dual-theme high-contrast
                 let indLevel = 4;
-                let indColor = 'hijau';
                 let indTitle = 'Stok Aman';
                 let indSub = `${p.currentStock} ${p.unit} tersedia`;
-                let indBg = 'bg-emerald-50 border-emerald-200 text-emerald-800';
+                let indBg = isDark
+                  ? 'bg-emerald-500/15 border-emerald-400/45 text-emerald-100'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900';
+                let indBadgeClass = isDark
+                  ? 'bg-emerald-400 text-[#0D1C42] border-emerald-300'
+                  : 'bg-emerald-600 text-white border-emerald-600';
                 let indDot = 'bg-emerald-500';
                 let indBadge = 'Level: Aman';
 
                 if (p.currentStock <= 0 || expStatus.status === 'expired') {
                   indLevel = 1;
-                  indColor = 'merah';
                   indTitle = p.currentStock <= 0 ? 'Stok Habis' : 'Kedaluwarsa';
                   indSub = p.currentStock <= 0 ? `Sisa 0 ${p.unit}` : expStatus.label;
-                  indBg = 'bg-rose-50 border-rose-200 text-rose-700';
+                  indBg = isDark
+                    ? 'bg-rose-500/18 border-rose-400/45 text-rose-100'
+                    : 'bg-rose-50 border-rose-200 text-rose-900';
+                  indBadgeClass = isDark
+                    ? 'bg-rose-500 text-white border-rose-400'
+                    : 'bg-rose-600 text-white border-rose-600';
                   indDot = 'bg-rose-500';
                   indBadge = 'Level: Kritis';
                 } else if (p.currentStock <= p.minStockAlert || expStatus.status === 'warning') {
                   indLevel = 2;
-                  indColor = 'oren';
-                  indTitle = p.currentStock <= p.minStockAlert ? 'Stok Menipis' : 'Segera Expired';
-                  indSub = `Sisa ${p.currentStock} ${p.unit} • Alarm: ${p.minStockAlert}`;
-                  indBg = 'bg-amber-50 border-amber-200 text-amber-800';
+                  indTitle = p.currentStock <= p.minStockAlert ? 'Stok Menipis' : 'Segera Kedaluwarsa';
+                  indSub = `Sisa ${p.currentStock} ${p.unit} • Batas: ${p.minStockAlert}`;
+                  indBg = isDark
+                    ? 'bg-amber-500/18 border-amber-400/45 text-amber-100'
+                    : 'bg-amber-50 border-amber-200 text-amber-900';
+                  indBadgeClass = isDark
+                    ? 'bg-amber-400 text-[#0D1C42] border-amber-300'
+                    : 'bg-amber-500 text-slate-950 border-amber-500';
                   indDot = 'bg-amber-500';
                   indBadge = 'Level: Menipis';
                 } else if (expStatus.daysLeft !== null && expStatus.daysLeft <= 30) {
                   indLevel = 3;
-                  indColor = 'kuning';
                   indTitle = 'Perhatian Kedaluwarsa';
-                  indSub = `Sisa ${p.currentStock} ${p.unit} • Exp ${expStatus.daysLeft} hr lagi`;
-                  indBg = 'bg-yellow-50 border-yellow-200 text-yellow-800';
-                  indDot = 'bg-yellow-500';
+                  indSub = `Sisa ${p.currentStock} ${p.unit} • ${expStatus.daysLeft} hr lagi`;
+                  indBg = isDark
+                    ? 'bg-[#152854] border-yellow-400/55 text-yellow-100'
+                    : 'bg-yellow-50 border-yellow-300 text-yellow-950';
+                  indBadgeClass = isDark
+                    ? 'bg-yellow-300 text-[#0D1C42] border-yellow-200'
+                    : 'bg-yellow-400 text-slate-950 border-yellow-500';
+                  indDot = 'bg-yellow-400';
                   indBadge = 'Level: Perhatian';
                 }
 
@@ -1204,19 +1226,37 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                       {/* Dedicated Bottom Health & Expiry Level Indicator */}
                       <div className={`mx-5 mb-4 p-3 rounded-2xl border space-y-2 ${indBg}`}>
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                          <div className="flex items-center gap-1.5 truncate pr-1">
+                        <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                          <div className="flex items-center gap-1.5 min-w-0 pr-1">
                             <span className={`w-2 h-2 rounded-full ${indDot} shrink-0 animate-pulse`} />
-                            <span className="font-bold text-slate-900 truncate">{indTitle}</span>
-                            <span className="text-[11px] font-medium opacity-85 truncate">({indSub})</span>
+                            <span
+                              className={`font-extrabold truncate ${
+                                isDark ? 'text-[#FCF1D0]' : 'text-slate-900'
+                              }`}
+                            >
+                              {indTitle}
+                            </span>
+                            <span
+                              className={`text-[11px] font-medium truncate ${
+                                isDark ? 'text-[#E8DEC0]' : 'text-slate-700'
+                              }`}
+                            >
+                              ({indSub})
+                            </span>
                           </div>
-                          <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-white/90 border border-current shrink-0">
+                          <span
+                            className={`text-[10px] font-extrabold font-mono px-2.5 py-0.5 rounded-full border shrink-0 shadow-2xs ${indBadgeClass}`}
+                          >
                             {indBadge}
                           </span>
                         </div>
 
                         {/* 4-Segment Visual Meter: Merah, Oren, Kuning, Hijau */}
-                        <div className="grid grid-cols-4 gap-1.5 h-2 rounded-full overflow-hidden bg-slate-200/80 p-0.5">
+                        <div
+                          className={`grid grid-cols-4 gap-1.5 h-2 rounded-full overflow-hidden p-0.5 ${
+                            isDark ? 'bg-[#0D1C42]/80' : 'bg-slate-200/80'
+                          }`}
+                        >
                           <div
                             className={`h-full rounded-full transition-colors ${
                               indLevel >= 1 ? 'bg-rose-500' : 'bg-transparent'
@@ -1244,12 +1284,26 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                         </div>
 
                         {/* Date Tracking Info: Expiry Date & Purchase Date */}
-                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-black/5 font-mono">
-                          <span className="font-semibold text-slate-800">
-                            {p.expiryDate ? `Exp: ${formatDateIndo(p.expiryDate)}` : 'Bebas Kedaluwarsa'}
+                        <div
+                          className={`flex items-center justify-between gap-2 text-[11px] pt-1.5 border-t font-mono ${
+                            isDark ? 'border-white/10' : 'border-black/10'
+                          }`}
+                        >
+                          <span
+                            className={`font-bold truncate ${
+                              isDark ? 'text-[#FCF1D0]' : 'text-slate-900'
+                            }`}
+                          >
+                            {p.expiryDate
+                              ? `Kedaluwarsa: ${formatDateIndo(p.expiryDate)}`
+                              : 'Bebas Kedaluwarsa'}
                           </span>
                           {p.purchaseDate && (
-                            <span className="text-slate-500 text-[10px]">
+                            <span
+                              className={`text-[10px] shrink-0 ${
+                                isDark ? 'text-[#B8C4E0]' : 'text-slate-600'
+                              }`}
+                            >
                               Beli: {formatDateIndo(p.purchaseDate)}
                             </span>
                           )}
@@ -1265,10 +1319,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                       <button
                         type="button"
                         onClick={() => openVoiceProductEditor(p)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition-colors cursor-pointer"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold transition-colors cursor-pointer ${
+                          isDark
+                            ? 'bg-[#172A57] hover:bg-[#2B4684] text-[#FCF1D0] border-[#345294]'
+                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                        }`}
                         title={`Ubah info ${p.name} dengan suara`}
                       >
-                        <Mic className="w-3 h-3 text-indigo-600" />
+                        <Mic className={`w-3 h-3 ${isDark ? 'text-[#FCF1D0]' : 'text-indigo-600'}`} />
                         <span>Ubah via Suara</span>
                       </button>
 
@@ -1471,7 +1529,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   type="text"
                   value={movementSearchQuery}
                   onChange={(e) => setMovementSearchQuery(e.target.value)}
-                  placeholder="Cari barang, SKU, kode batch (e.g. Batch 24 Okt), sumber, atau catatan..."
+                  placeholder="Cari barang, SKU, kode batch (misal Batch 24 Okt), sumber, atau catatan..."
                   className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-full pl-9 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none"
                 />
               </div>
@@ -1541,7 +1599,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     <th className="py-3 px-4">Barang & SKU</th>
                     <th className="py-3 px-4">Lokasi Gudang</th>
                     <th className="py-3 px-4 text-center">Perubahan Stok</th>
-                    <th className="py-3 px-4">Batch & Expiry</th>
+                    <th className="py-3 px-4">Batch & Kedaluwarsa</th>
                     <th className="py-3 px-4 text-right">Nilai Finansial</th>
                     <th className="py-3 px-4">Catatan</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
@@ -1633,7 +1691,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             </div>
                             {mov.batchExpiry && (
                               <div className="text-[10px] text-amber-700 font-medium">
-                                Exp: {formatDateIndo(mov.batchExpiry)}
+                                Kedaluwarsa: {formatDateIndo(mov.batchExpiry)}
                               </div>
                             )}
                           </td>
@@ -1815,7 +1873,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   <Camera className="w-4 h-4 text-slate-700" />
                   <span>Ganti Foto: {quickImageTarget.name}</span>
                 </h3>
-                <p className="text-[11px] text-slate-500">Upload dari perangkat atau pilih foto katalog UMKM</p>
+                <p className="text-[11px] text-slate-500">Unggah dari perangkat atau pilih foto katalog UMKM</p>
               </div>
               <button onClick={() => setQuickImageTarget(null)} className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                 <X className="w-4 h-4" />
@@ -1827,7 +1885,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               {quickImageTarget.imageUrl ? (
                 <img
                   src={quickImageTarget.imageUrl}
-                  alt="Current Preview"
+                  alt="Pratinjau Foto Saat Ini"
                   className="w-16 h-16 rounded-xl object-cover border border-slate-200"
                 />
               ) : (
@@ -2284,7 +2342,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             value={newBatchExpiry}
                             onChange={(val) => setNewBatchExpiry(val)}
                             presetMode="expiry"
-                            label="Pilih Tanggal Exp Batch Baru..."
+                            label="Pilih Tanggal Kedaluwarsa Batch Baru..."
                           />
                         </div>
                       </div>

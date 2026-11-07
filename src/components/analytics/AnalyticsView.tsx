@@ -446,18 +446,18 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => exportToExcel(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs whitespace-nowrap cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4 text-slate-500" />
-            <span>Export Excel (.xlsx)</span>
+            <FileSpreadsheet className="w-4 h-4 text-slate-500 shrink-0" />
+            <span>Ekspor Excel (.xlsx)</span>
           </button>
 
           <button
             type="button"
             onClick={() => exportToOfficialPdf(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer"
           >
-            <FileText className="w-4 h-4 text-[#0D1C42]" />
+            <FileText className="w-4 h-4 text-[#0D1C42] shrink-0" />
             <span>Cetak PDF Resmi Bank (KUR)</span>
           </button>
         </div>
@@ -465,44 +465,44 @@ export const AnalyticsView: React.FC = () => {
 
       {/* 2. Segmented Switch Bar */}
       <div className="flex items-center justify-center sm:justify-start">
-        <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200/80 rounded-full shadow-inner">
+        <div className="inline-flex flex-wrap items-center justify-center sm:justify-start gap-1 p-1 bg-slate-100 border border-slate-200/80 rounded-3xl sm:rounded-full shadow-inner max-w-full">
           <button
             type="button"
             onClick={() => setViewSegment('chart')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'chart'
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <BarChart2 className="w-3.5 h-3.5" />
+            <BarChart2 className="w-3.5 h-3.5 shrink-0" />
             <span>Grafik & Analitik</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewSegment('report')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'report'
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileText className="w-3.5 h-3.5" />
+            <FileText className="w-3.5 h-3.5 shrink-0" />
             <span>Laporan Evaluasi</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewSegment('table')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'table'
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Spreadsheet Interaktif ({transactions.length})</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+            <span>Tabel Kas Interaktif ({transactions.length})</span>
           </button>
         </div>
       </div>
@@ -575,7 +575,7 @@ export const AnalyticsView: React.FC = () => {
             </div>
 
             {/* Timeframe Selector (Hari | Minggu | Bulan | Tahun) */}
-            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200/70 p-1 rounded-xl self-start lg:self-auto">
+            <div className="flex items-center flex-wrap gap-1 bg-slate-100 border border-slate-200/70 p-1 rounded-xl self-start lg:self-auto max-w-full">
               <span className="text-[11px] font-semibold text-slate-500 px-2">Rentang:</span>
               {(['day', 'week', 'month', 'year'] as const).map((tf) => {
                 const labels = {
@@ -589,7 +589,7 @@ export const AnalyticsView: React.FC = () => {
                     key={tf}
                     type="button"
                     onClick={() => setChartTimeframe(tf)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                       chartTimeframe === tf
                         ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -857,7 +857,7 @@ export const AnalyticsView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-emerald-600" />
-                  <h3 className="text-sm font-bold text-slate-900">Barang Terlaris (Fast-Moving)</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Barang Terlaris (Perputaran Cepat)</h3>
                 </div>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-semibold font-mono">
                   {fastMoving.length} Barang
@@ -909,7 +909,7 @@ export const AnalyticsView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <AlertOctagon className="w-4 h-4 text-amber-500" />
-                  <h3 className="text-sm font-bold text-slate-900">Barang Mengendap (Slow-Moving)</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Barang Mengendap (Perputaran Lambat)</h3>
                 </div>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold font-mono">
                   Tertahan: {formatRupiah(totalLockedCapital)}
@@ -1028,10 +1028,10 @@ export const AnalyticsView: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-slate-700" />
-                <span>Lembar Kerja Spreadsheet Interaktif (Sinkron Buku Kas)</span>
+                <span>Tabel Lembar Kerja Kas Interaktif (Sinkron Buku Kas)</span>
               </h3>
               <p className="text-xs text-slate-500">
-                Setiap perubahan atau penambahan baris langsung tersinkronisasi dengan Buku Kas, Dashboard, dan Excel
+                Setiap perubahan atau penambahan baris langsung tersinkronisasi dengan Buku Kas, Beranda, dan Excel
               </p>
             </div>
 

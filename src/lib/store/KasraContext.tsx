@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   Product,
   Transaction,
@@ -10,6 +10,10 @@ import {
   ConfirmationDraft,
   TabType,
   CategoryDefinition,
+  AppNotification,
+  NotificationCategory,
+  NotificationSeverity,
+  NotificationPreferences,
 } from '@/types';
 import {
   INITIAL_PROFILE,
@@ -19,8 +23,47 @@ import {
   INITIAL_TRANSACTIONS,
   INITIAL_STOCK_MOVEMENTS,
 } from '@/lib/mockData';
-import { formatBatchName, getActiveProductExpiry } from '@/lib/utils';
+import { formatBatchName, formatDateIndo, formatRupiah, getActiveProductExpiry } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  inAppEnabled: true,
+  browserPushEnabled: true,
+  cashIncome: true,
+  cashExpense: true,
+  stockOut: true,
+  stockLow: true,
+  expiryExpired: true,
+  expiryNear: true,
+  stockMutation: true,
+  financeAlert: true,
+};
+
+function isCategoryEnabled(
+  category: NotificationCategory,
+  prefs: NotificationPreferences
+): boolean {
+  switch (category) {
+    case 'cash_income':
+      return prefs.cashIncome;
+    case 'cash_expense':
+      return prefs.cashExpense;
+    case 'stock_out':
+      return prefs.stockOut;
+    case 'stock_low':
+      return prefs.stockLow;
+    case 'expiry_expired':
+      return prefs.expiryExpired;
+    case 'expiry_near':
+      return prefs.expiryNear;
+    case 'stock_mutation':
+      return prefs.stockMutation;
+    case 'finance_alert':
+      return prefs.financeAlert;
+    default:
+      return true;
+  }
+}
 
 function getLocalTodayIso(): string {
   const now = new Date();
@@ -79,6 +122,18 @@ interface KasraContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   setTheme: (theme: 'dark' | 'light') => void;
+  // Notification System & Browser Push
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  notificationPreferences: NotificationPreferences;
+  browserNotificationPermission: 'default' | 'granted' | 'denied' | 'unsupported';
+  updateNotificationPreferences: (updates: Partial<NotificationPreferences>) => void;
+  requestBrowserNotificationPermission: () => Promise<'default' | 'granted' | 'denied' | 'unsupported'>;
+  sendTestBrowserNotification: () => Promise<boolean>;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  deleteNotification: (id: string) => void;
+  clearAllNotifications: () => void;
 }
 
 const KasraContext = createContext<KasraContextType | undefined>(undefined);
@@ -94,6 +149,9 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       MOVEMENTS: `kasra_v3_${uid}_movements`,
       PROFILE: `kasra_v3_${uid}_profile`,
       CATEGORY_DEFS: `kasra_v3_${uid}_category_defs`,
+      NOTIFICATIONS: `kasra_v3_${uid}_notifications`,
+      NOTIF_PREFS: `kasra_v3_${uid}_notif_prefs`,
+      NOTIF_KEYS: `kasra_v3_${uid}_notif_keys`,
     }),
     [uid]
   );
@@ -115,8 +173,215 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [activeDraft, setActiveDraft] = useState<ConfirmationDraft | null>(null);
   const [todayIso, setTodayIso] = useState<string>(() => getLocalTodayIso());
   const [theme, setThemeState] = useState<'dark' | 'light'>('light');
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
+    DEFAULT_NOTIFICATION_PREFERENCES
+  );
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<
+    'default' | 'granted' | 'denied' | 'unsupported'
+  >('default');
+
+  const prefsRef = useRef<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const notifiedKeysRef = useRef<Set<string>>(new Set());
   const hydratedUidRef = useRef<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    prefsRef.current = notificationPreferences;
+  }, [notificationPreferences]);
+
+  // Sync Web Notification API permission on mount & window focus
+  useEffect(() => {
+    const syncPermission = () => {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        setBrowserNotificationPermission('unsupported');
+      } else {
+        setBrowserNotificationPermission(window.Notification.permission);
+      }
+    };
+    syncPermission();
+    window.addEventListener('focus', syncPermission);
+    return () => window.removeEventListener('focus', syncPermission);
+  }, []);
+
+  const pushNotification = useCallback(
+    (payload: {
+      category: NotificationCategory;
+      severity: NotificationSeverity;
+      title: string;
+      message: string;
+      targetTab: TabType;
+      dedupKey?: string;
+    }) => {
+      const prefs = prefsRef.current;
+      if (!isCategoryEnabled(payload.category, prefs)) return;
+
+      const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const nowReadable = new Date().toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      if (prefs.inAppEnabled) {
+        const newNotif: AppNotification = {
+          id,
+          category: payload.category,
+          severity: payload.severity,
+          title: payload.title,
+          message: payload.message,
+          createdAt: nowReadable,
+          timestamp: Date.now(),
+          read: false,
+          targetTab: payload.targetTab,
+          dedupKey: payload.dedupKey,
+        };
+        setNotifications((prev) => [newNotif, ...prev].slice(0, 100));
+      }
+
+      if (
+        prefs.browserPushEnabled &&
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        window.Notification.permission === 'granted'
+      ) {
+        try {
+          const browserNotif = new window.Notification(payload.title, {
+            body: payload.message,
+            icon: '/icon.svg',
+            tag: payload.dedupKey || id,
+          });
+          browserNotif.onclick = () => {
+            window.focus();
+            setActiveTab(payload.targetTab);
+            browserNotif.close();
+          };
+        } catch {
+          // Ignore environments where ServiceWorker registration is strictly required
+        }
+      }
+    },
+    []
+  );
+
+  const requestBrowserNotificationPermission = useCallback(async (): Promise<
+    'default' | 'granted' | 'denied' | 'unsupported'
+  > => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotificationPermission('unsupported');
+      return 'unsupported';
+    }
+    try {
+      const result = await window.Notification.requestPermission();
+      setBrowserNotificationPermission(result);
+      if (result === 'granted') {
+        setNotificationPreferences((prev) => {
+          const next = { ...prev, browserPushEnabled: true };
+          prefsRef.current = next;
+          return next;
+        });
+        try {
+          const n = new window.Notification('Notifikasi KASRA Aktif!', {
+            body: 'Pemberitahuan uang masuk/keluar, stok habis, dan kedaluwarsa siap dikirim ke perangkat Anda.',
+            icon: '/icon.svg',
+            tag: 'kasra-welcome-notif',
+          });
+          n.onclick = () => {
+            window.focus();
+            n.close();
+          };
+        } catch {
+          // ignore
+        }
+      }
+      return result;
+    } catch {
+      const fallback = window.Notification.permission;
+      setBrowserNotificationPermission(fallback);
+      return fallback;
+    }
+  }, []);
+
+  const sendTestBrowserNotification = useCallback(async (): Promise<boolean> => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotificationPermission('unsupported');
+      return false;
+    }
+    let perm: NotificationPermission | 'unsupported' = window.Notification.permission;
+    if (perm === 'default') {
+      perm = await requestBrowserNotificationPermission();
+    } else {
+      setBrowserNotificationPermission(perm);
+    }
+
+    const id = `notif-test-${Date.now()}`;
+    const nowReadable = new Date().toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    setNotifications((prev) =>
+      [
+        {
+          id,
+          category: 'finance_alert' as NotificationCategory,
+          severity: 'info' as NotificationSeverity,
+          title: 'Tes Notifikasi KASRA Berhasil',
+          message: 'Sistem notifikasi aplikasi & browser telah terhubung dengan kas dan gudang toko Anda.',
+          createdAt: nowReadable,
+          timestamp: Date.now(),
+          read: false,
+          targetTab: 'dashboard' as TabType,
+        },
+        ...prev,
+      ].slice(0, 100)
+    );
+
+    if (perm === 'granted') {
+      try {
+        const n = new window.Notification('Tes Notifikasi KASRA Berhasil', {
+          body: 'Notifikasi browser aktif dan terhubung dengan arus kas serta stok gudang toko Anda.',
+          icon: '/icon.svg',
+          tag: id,
+        });
+        n.onclick = () => {
+          window.focus();
+          n.close();
+        };
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }, [requestBrowserNotificationPermission]);
+
+  const updateNotificationPreferences = useCallback((updates: Partial<NotificationPreferences>) => {
+    setNotificationPreferences((prev) => {
+      const next = { ...prev, ...updates };
+      prefsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const markNotificationRead = useCallback((id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications((prev) => prev.map((n) => (n.read ? n : { ...n, read: true })));
+  }, []);
+
+  const deleteNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const clearAllNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
 
   // Hydrate theme preference from localStorage
   useEffect(() => {
@@ -182,6 +447,25 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setCategoryDefinitions([]);
         setCategories(['Semua']);
       }
+
+      const storedNotifs = localStorage.getItem(storageKeys.NOTIFICATIONS);
+      setNotifications(storedNotifs ? JSON.parse(storedNotifs) : []);
+
+      const storedPrefs = localStorage.getItem(storageKeys.NOTIF_PREFS);
+      if (storedPrefs) {
+        const mergedPrefs = {
+          ...DEFAULT_NOTIFICATION_PREFERENCES,
+          ...JSON.parse(storedPrefs),
+        };
+        setNotificationPreferences(mergedPrefs);
+        prefsRef.current = mergedPrefs;
+      } else {
+        setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+        prefsRef.current = DEFAULT_NOTIFICATION_PREFERENCES;
+      }
+
+      const storedKeys = localStorage.getItem(storageKeys.NOTIF_KEYS);
+      notifiedKeysRef.current = new Set(storedKeys ? JSON.parse(storedKeys) : []);
     } catch (e) {
       console.warn('Failed to parse cached local data, using empty defaults', e);
       setProducts([]);
@@ -189,6 +473,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStockMovements([]);
       setCategoryDefinitions([]);
       setCategories(['Semua']);
+      setNotifications([]);
+      setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+      prefsRef.current = DEFAULT_NOTIFICATION_PREFERENCES;
+      notifiedKeysRef.current = new Set();
     }
 
     hydratedUidRef.current = uid;
@@ -204,10 +492,23 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem(storageKeys.MOVEMENTS, JSON.stringify(stockMovements));
       localStorage.setItem(storageKeys.PROFILE, JSON.stringify(profile));
       localStorage.setItem(storageKeys.CATEGORY_DEFS, JSON.stringify(categoryDefinitions));
+      localStorage.setItem(storageKeys.NOTIFICATIONS, JSON.stringify(notifications));
+      localStorage.setItem(storageKeys.NOTIF_PREFS, JSON.stringify(notificationPreferences));
     } catch (e) {
       console.warn('Failed to persist to localStorage', e);
     }
-  }, [products, transactions, stockMovements, profile, categoryDefinitions, isHydrated, storageKeys, uid]);
+  }, [
+    products,
+    transactions,
+    stockMovements,
+    profile,
+    categoryDefinitions,
+    notifications,
+    notificationPreferences,
+    isHydrated,
+    storageKeys,
+    uid,
+  ]);
 
   const addCategory = (mainCategory: string, subcategory?: string) => {
     const trimmed = mainCategory.trim();
@@ -338,14 +639,27 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStockMovements((prev) => [movement, ...prev]);
     }
 
+    pushNotification({
+      category: 'stock_mutation',
+      severity: 'info',
+      title: `Barang Baru: ${newProduct.name}`,
+      message: `Ditambahkan ke ${newProduct.location || 'Gudang Utama'} (${newProduct.currentStock} ${newProduct.unit})`,
+      targetTab: 'storage',
+    });
+
     return newProduct;
   };
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
+  const updateProduct = (
+    id: string,
+    updates: Partial<Product>,
+    options?: { silent?: boolean }
+  ) => {
     if (updates.category && updates.category.trim()) {
       addCategory(updates.category.trim(), updates.subcategory?.trim() || undefined);
     }
 
+    const existingProd = products.find((p) => p.id === id);
     const nowIso = getLocalTodayIso();
     setProducts((prev) =>
       prev.map((p) => {
@@ -379,6 +693,41 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return p;
       })
     );
+
+    if (!options?.silent && existingProd) {
+      const targetName = updates.name || existingProd.name;
+      const changedParts: string[] = [];
+      if (updates.sellingPrice !== undefined && updates.sellingPrice !== existingProd.sellingPrice) {
+        changedParts.push(`Harga jual ${formatRupiah(updates.sellingPrice)}`);
+      }
+      if (updates.hppAmount !== undefined && updates.hppAmount !== existingProd.hppAmount) {
+        changedParts.push(`Modal ${formatRupiah(updates.hppAmount)}`);
+      }
+      if (updates.expiryDate !== undefined && updates.expiryDate !== existingProd.expiryDate) {
+        changedParts.push(
+          updates.expiryDate ? `Kedaluwarsa ${formatDateIndo(updates.expiryDate)}` : 'Bebas kedaluwarsa'
+        );
+      }
+      if (updates.currentStock !== undefined && updates.currentStock !== existingProd.currentStock) {
+        changedParts.push(`Stok ${updates.currentStock} ${updates.unit || existingProd.unit}`);
+      }
+      if (updates.location !== undefined && updates.location !== existingProd.location) {
+        changedParts.push(`Lokasi ${updates.location}`);
+      }
+
+      if (changedParts.length > 0 || updates.name !== undefined || updates.imageUrl !== undefined) {
+        pushNotification({
+          category: 'stock_mutation',
+          severity: 'info',
+          title: `Info Barang Diperbarui: ${targetName}`,
+          message:
+            changedParts.length > 0
+              ? changedParts.join(' • ')
+              : `Data barang ${targetName} berhasil diperbarui.`,
+          targetTab: 'storage',
+        });
+      }
+    }
   };
 
   const deleteProduct = (id: string) => {
@@ -436,13 +785,17 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         const earliestExp = getActiveProductExpiry(updatedBatches, targetProd.expiryDate);
-        updateProduct(targetProd.id, {
-          currentStock: newStock,
-          batches: updatedBatches,
-          expiryDate: earliestExp || undefined,
-          lastSoldAt: movType === 'out_sale' ? nowReadable : targetProd.lastSoldAt,
-          purchaseDate: movType === 'in_purchase' ? nowIso : targetProd.purchaseDate,
-        });
+        updateProduct(
+          targetProd.id,
+          {
+            currentStock: newStock,
+            batches: updatedBatches,
+            expiryDate: earliestExp || undefined,
+            lastSoldAt: movType === 'out_sale' ? nowReadable : targetProd.lastSoldAt,
+            purchaseDate: movType === 'in_purchase' ? nowIso : targetProd.purchaseDate,
+          },
+          { silent: true }
+        );
 
         if (!createdMovementId) {
           const movId = `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -463,7 +816,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             batchExpiry: earliestExp,
             financialAmount: data.amount,
             relatedTransactionId: trxId,
-            source: data.inputMethod === 'mic' ? 'Suara Mic' : 'Buku Kas',
+            source: data.inputMethod === 'mic' ? 'Suara' : 'Buku Kas',
             notes: data.description,
             createdAt: nowReadable,
           };
@@ -480,6 +833,18 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       createdAt: nowReadable,
     };
     setTransactions((prev) => [newTrx, ...prev]);
+
+    pushNotification({
+      category: data.type === 'income' ? 'cash_income' : 'cash_expense',
+      severity: data.type === 'income' ? 'success' : 'danger',
+      title:
+        data.type === 'income'
+          ? `Uang Masuk +${formatRupiah(data.amount)}`
+          : `Uang Keluar -${formatRupiah(data.amount)}`,
+      message: `${data.description} (${data.category})`,
+      targetTab: 'cash',
+    });
+
     return newTrx;
   };
 
@@ -555,13 +920,17 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedBatches,
         movement.batchExpiry || matchedProduct.expiryDate
       );
-      updateProduct(matchedProduct.id, {
-        currentStock: newStock,
-        batches: updatedBatches,
-        expiryDate: earliestExp || undefined,
-        lastSoldAt: !isRestock ? nowReadable : matchedProduct.lastSoldAt,
-        purchaseDate: isRestock ? nowIso : matchedProduct.purchaseDate,
-      });
+      updateProduct(
+        matchedProduct.id,
+        {
+          currentStock: newStock,
+          batches: updatedBatches,
+          expiryDate: earliestExp || undefined,
+          lastSoldAt: !isRestock ? nowReadable : matchedProduct.lastSoldAt,
+          purchaseDate: isRestock ? nowIso : matchedProduct.purchaseDate,
+        },
+        { silent: true }
+      );
 
       // Sync with Buku Kas if financialAmount > 0 and no transaction already linked
       if (movement.financialAmount && movement.financialAmount > 0 && !linkedTrxId) {
@@ -569,16 +938,19 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         linkedTrxId = trxId;
 
         const isExpense = movement.type === 'in_purchase' || movement.type === 'waste';
+        const trxDesc =
+          movement.notes ||
+          (isExpense
+            ? `Kulakan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
+            : `Penjualan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`);
+        const trxCat = isExpense ? matchedProduct.category || 'Bahan Baku' : 'Penjualan';
+
         const newTrx: Transaction = {
           id: trxId,
           type: isExpense ? 'expense' : 'income',
           amount: movement.financialAmount,
-          category: isExpense ? matchedProduct.category || 'Bahan Baku' : 'Penjualan',
-          description:
-            movement.notes ||
-            (isExpense
-              ? `Kulakan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
-              : `Penjualan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`),
+          category: trxCat,
+          description: trxDesc,
           date: nowIso,
           inputMethod: 'manual',
           relatedProductId: matchedProduct.id,
@@ -587,6 +959,37 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           createdAt: nowReadable,
         };
         setTransactions((prev) => [newTrx, ...prev]);
+
+        pushNotification({
+          category: isExpense ? 'cash_expense' : 'cash_income',
+          severity: isExpense ? 'danger' : 'success',
+          title: isExpense
+            ? `Uang Keluar -${formatRupiah(movement.financialAmount)}`
+            : `Uang Masuk +${formatRupiah(movement.financialAmount)}`,
+          message: `${trxDesc} (${trxCat})`,
+          targetTab: 'cash',
+        });
+      }
+
+      if (movement.type === 'waste') {
+        pushNotification({
+          category: 'stock_mutation',
+          severity: 'warning',
+          title: `Barang Rusak / Susut: ${matchedProduct.name}`,
+          message: `Stok berkurang ${Math.abs(delta)} ${matchedProduct.unit} (${movement.notes || 'Penyusutan Gudang'})`,
+          targetTab: 'storage',
+        });
+      } else if (!linkedTrxId) {
+        pushNotification({
+          category: 'stock_mutation',
+          severity: 'info',
+          title:
+            delta >= 0
+              ? `Stok Masuk: ${matchedProduct.name}`
+              : `Stok Keluar: ${matchedProduct.name}`,
+          message: `${delta >= 0 ? '+' : ''}${delta} ${matchedProduct.unit} • Sisa sekarang: ${newStock} ${matchedProduct.unit}`,
+          targetTab: 'storage',
+        });
       }
     }
 
@@ -682,6 +1085,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2. Process all stock changes
     const newMovements: StockMovement[] = [];
     const updatedProducts = [...products];
+    const newlyCreatedProducts: Product[] = [];
 
     draft.stockChanges.forEach((change) => {
       if (change.category && change.category.trim()) {
@@ -763,8 +1167,8 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             change.quantityDelta > 0
               ? (change.pricePerUnit || existing.hppAmount) * change.quantityDelta
               : existing.sellingPrice * Math.abs(change.quantityDelta),
-          source: draft.source.startsWith('mic') ? 'Voice Mic' : 'Pencatatan Draf Pintar',
-          notes: draft.title || (change.quantityDelta > 0 ? 'Restok Masuk' : 'Penjualan Kasir'),
+          source: draft.source.startsWith('mic') ? 'Suara' : 'Pencatatan Draf Pintar',
+          notes: draft.title || (change.quantityDelta > 0 ? 'Stok Masuk' : 'Penjualan Kasir'),
           createdAt: nowReadable,
         });
       } else if (change.confirmedNewProduct) {
@@ -826,6 +1230,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         updatedProducts.unshift(newProd);
+        newlyCreatedProducts.push(newProd);
 
         newMovements.push({
           id: `mov-${Date.now()}-${Math.random()}`,
@@ -845,7 +1250,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             change.quantityDelta >= 0
               ? unitCost * Math.max(1, change.quantityDelta)
               : unitSelling * Math.abs(change.quantityDelta),
-          source: draft.source.startsWith('mic') ? 'Voice Mic' : 'Pencatatan Draf Pintar',
+          source: draft.source.startsWith('mic') ? 'Suara' : 'Pencatatan Draf Pintar',
           notes: draft.title || 'Barang Baru Ditambahkan ke Gudang',
           createdAt: nowReadable,
         });
@@ -872,7 +1277,45 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (newTransactionsToAdd.length > 0) {
       setTransactions((prev) => [...newTransactionsToAdd, ...prev]);
+      newTransactionsToAdd.forEach((trx) => {
+        pushNotification({
+          category: trx.type === 'income' ? 'cash_income' : 'cash_expense',
+          severity: trx.type === 'income' ? 'success' : 'danger',
+          title:
+            trx.type === 'income'
+              ? `Uang Masuk +${formatRupiah(trx.amount)}`
+              : `Uang Keluar -${formatRupiah(trx.amount)}`,
+          message: `${trx.description} (${trx.category})`,
+          targetTab: 'cash',
+        });
+      });
     }
+
+    newlyCreatedProducts.forEach((np) => {
+      pushNotification({
+        category: 'stock_mutation',
+        severity: 'info',
+        title: `Barang Baru: ${np.name}`,
+        message: `Ditambahkan ke ${np.location || 'Gudang Utama'} (${np.currentStock} ${np.unit})`,
+        targetTab: 'storage',
+      });
+    });
+
+    if (newTransactionsToAdd.length === 0 && newMovements.length > 0) {
+      newMovements.forEach((mov) => {
+        pushNotification({
+          category: 'stock_mutation',
+          severity: 'info',
+          title:
+            mov.quantityDelta >= 0
+              ? `Stok Masuk: ${mov.productName}`
+              : `Stok Keluar: ${mov.productName}`,
+          message: `${mov.quantityDelta >= 0 ? '+' : ''}${mov.quantityDelta} ${mov.unit || 'pcs'} • Sisa: ${mov.stockAfter} ${mov.unit || 'pcs'}`,
+          targetTab: 'storage',
+        });
+      });
+    }
+
     setProducts(updatedProducts);
     if (newMovements.length > 0) {
       setStockMovements((prev) => [...newMovements, ...prev]);
@@ -919,6 +1362,8 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCategoryDefinitions([]);
     setCategories(['Semua']);
     setActiveDraft(null);
+    setNotifications([]);
+    notifiedKeysRef.current = new Set();
 
     try {
       localStorage.removeItem(storageKeys.PRODUCTS);
@@ -926,6 +1371,8 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.removeItem(storageKeys.MOVEMENTS);
       localStorage.removeItem(storageKeys.PROFILE);
       localStorage.removeItem(storageKeys.CATEGORY_DEFS);
+      localStorage.removeItem(storageKeys.NOTIFICATIONS);
+      localStorage.removeItem(storageKeys.NOTIF_KEYS);
     } catch {
       // ignore
     }
@@ -983,6 +1430,171 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return products.reduce((sum, p) => sum + p.currentStock * p.hppAmount, 0);
   }, [products]);
 
+  const unreadNotificationCount = useMemo(() => {
+    return notifications.filter((n) => !n.read).length;
+  }, [notifications]);
+
+  // Reactive Condition Watcher: Stock Out, Stock Low, Expired, Near Expiry, Cash Deficit & Monthly Target
+  useEffect(() => {
+    if (!isHydrated || hydratedUidRef.current !== uid) return;
+
+    const activeKeys = new Set<string>();
+    const knownKeys = notifiedKeysRef.current;
+
+    const parts = todayIso.split('-').map(Number);
+    const todayZero = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1).getTime();
+
+    products.forEach((p) => {
+      if (p.currentStock <= 0) {
+        const key = `stock_out:${p.id}`;
+        activeKeys.add(key);
+        if (!knownKeys.has(key)) {
+          knownKeys.add(key);
+          pushNotification({
+            category: 'stock_out',
+            severity: 'danger',
+            title: `Stok Habis: ${p.name}`,
+            message: `Sisa 0 ${p.unit} di ${p.location || 'Gudang Utama'}. Segera isi ulang stok!`,
+            targetTab: 'storage',
+            dedupKey: key,
+          });
+        }
+      } else if (p.currentStock <= p.minStockAlert) {
+        const key = `stock_low:${p.id}`;
+        activeKeys.add(key);
+        if (!knownKeys.has(key)) {
+          knownKeys.add(key);
+          pushNotification({
+            category: 'stock_low',
+            severity: 'warning',
+            title: `Stok Menipis: ${p.name}`,
+            message: `Tersisa ${p.currentStock} ${p.unit} (batas aman: ${p.minStockAlert} ${p.unit}).`,
+            targetTab: 'storage',
+            dedupKey: key,
+          });
+        }
+      }
+
+      if (p.expiryDate) {
+        const ep = p.expiryDate.split('-').map(Number);
+        if (ep.length === 3) {
+          const expTime = new Date(ep[0], ep[1] - 1, ep[2]).getTime();
+          const diffDays = Math.round((expTime - todayZero) / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) {
+            const key = `exp_past:${p.id}:${p.expiryDate}`;
+            activeKeys.add(key);
+            if (!knownKeys.has(key)) {
+              knownKeys.add(key);
+              pushNotification({
+                category: 'expiry_expired',
+                severity: 'danger',
+                title: `Barang Kedaluwarsa: ${p.name}`,
+                message: `Telah melewati tanggal kedaluwarsa (${formatDateIndo(p.expiryDate)}).`,
+                targetTab: 'storage',
+                dedupKey: key,
+              });
+            }
+          } else if (diffDays <= 7) {
+            const key = `exp_near:${p.id}:${p.expiryDate}`;
+            activeKeys.add(key);
+            if (!knownKeys.has(key)) {
+              knownKeys.add(key);
+              pushNotification({
+                category: 'expiry_near',
+                severity: 'warning',
+                title: `Mendekati Kedaluwarsa: ${p.name}`,
+                message:
+                  diffDays === 0
+                    ? `Kedaluwarsa HARI INI (${formatDateIndo(p.expiryDate)}). Prioritaskan FEFO!`
+                    : `Kedaluwarsa dalam ${diffDays} hari (${formatDateIndo(p.expiryDate)}).`,
+                targetTab: 'storage',
+                dedupKey: key,
+              });
+            }
+          }
+        }
+      }
+    });
+
+    if (transactions.length > 0) {
+      const totalBalance = transactions.reduce(
+        (acc, t) => (t.type === 'income' ? acc + t.amount : acc - t.amount),
+        0
+      );
+      if (totalBalance < 0) {
+        const key = `finance_deficit:${todayIso}`;
+        activeKeys.add(key);
+        if (!knownKeys.has(key)) {
+          knownKeys.add(key);
+          pushNotification({
+            category: 'finance_alert',
+            severity: 'danger',
+            title: 'Peringatan Saldo Kas Defisit',
+            message: `Total saldo kas toko saat ini minus (${formatRupiah(totalBalance)}).`,
+            targetTab: 'cash',
+            dedupKey: key,
+          });
+        }
+      }
+    }
+
+    if (profile.monthlyTarget > 0) {
+      if (monthIncome >= profile.monthlyTarget) {
+        const key = `target_100:${currentMonthPrefix}:${profile.monthlyTarget}`;
+        activeKeys.add(key);
+        if (!knownKeys.has(key)) {
+          knownKeys.add(key);
+          pushNotification({
+            category: 'finance_alert',
+            severity: 'success',
+            title: 'Target Pendapatan Bulanan Tercapai!',
+            message: `Pemasukan bulan ini (${formatRupiah(monthIncome)}) melampaui target ${formatRupiah(profile.monthlyTarget)}.`,
+            targetTab: 'analytics',
+            dedupKey: key,
+          });
+        }
+      } else if (monthIncome >= profile.monthlyTarget * 0.8) {
+        const key = `target_80:${currentMonthPrefix}:${profile.monthlyTarget}`;
+        activeKeys.add(key);
+        if (!knownKeys.has(key)) {
+          knownKeys.add(key);
+          pushNotification({
+            category: 'finance_alert',
+            severity: 'info',
+            title: 'Target Bulanan Mencapai 80%',
+            message: `Pemasukan bulan ini sudah mencapai ${formatRupiah(monthIncome)} dari target ${formatRupiah(profile.monthlyTarget)}.`,
+            targetTab: 'analytics',
+            dedupKey: key,
+          });
+        }
+      }
+    }
+
+    // Prune resolved condition keys so re-occurring alerts can trigger again in the future
+    Array.from(knownKeys).forEach((k) => {
+      if (!activeKeys.has(k)) {
+        knownKeys.delete(k);
+      }
+    });
+
+    try {
+      localStorage.setItem(storageKeys.NOTIF_KEYS, JSON.stringify(Array.from(knownKeys)));
+    } catch {
+      // ignore
+    }
+  }, [
+    products,
+    transactions,
+    profile.monthlyTarget,
+    monthIncome,
+    currentMonthPrefix,
+    todayIso,
+    isHydrated,
+    uid,
+    storageKeys.NOTIF_KEYS,
+    pushNotification,
+  ]);
+
   return (
     <KasraContext.Provider
       value={{
@@ -1027,6 +1639,17 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         theme,
         toggleTheme,
         setTheme,
+        notifications,
+        unreadNotificationCount,
+        notificationPreferences,
+        browserNotificationPermission,
+        updateNotificationPreferences,
+        requestBrowserNotificationPermission,
+        sendTestBrowserNotification,
+        markNotificationRead,
+        markAllNotificationsRead,
+        deleteNotification,
+        clearAllNotifications,
       }}
     >
       {children}

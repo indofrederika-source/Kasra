@@ -23,7 +23,6 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Cell,
   AreaChart,
   Area,
   XAxis,
@@ -129,9 +128,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return Math.round(((monthIncome - monthExpense) / Math.max(1, monthExpense)) * 100);
   }, [monthIncome, monthExpense]);
 
-  // Dynamic Chart Data for Daily (7d), Weekly (4w), Monthly (6m), Annual (4y)
+  // Dynamic Chart Data for Harian (7h), Mingguan (4mgg), Bulanan (6bln), Tahunan (4thn)
   const chartData = useMemo(() => {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const now = new Date();
     const result: Array<{
@@ -195,7 +194,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ? keluar
             : masuk + keluar;
         result.push({
-          label: `W${4 - w}`,
+          label: `Mgg ${4 - w}`,
           fullDate: `${startD.getDate()} - ${endD.getDate()} ${monthNames[endD.getMonth()]}`,
           masuk,
           keluar,
@@ -268,8 +267,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return result;
   }, [transactions, timeframe, reportFilter]);
 
-  // Filtered Recent Transactions (All | Today | 1 Month | 2 Month)
-  const filteredRecentTransactions = useMemo(() => {
+  // Filtered Recent Transactions (Semua | Hari Ini | 1 Bulan | 2 Bulan) — Max 8 items
+  const allFilteredRecent = useMemo(() => {
     const now = new Date();
     const todayStr = toLocalDateStr(now);
     const oneMonthAgo = new Date(now);
@@ -280,15 +279,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
     const twoMonthsStr = toLocalDateStr(twoMonthsAgo);
 
-    return transactions
-      .filter((t) => {
-        if (trxRangeFilter === 'today') return t.date === todayStr;
-        if (trxRangeFilter === '1m') return t.date >= oneMonthStr;
-        if (trxRangeFilter === '2m') return t.date >= twoMonthsStr;
-        return true;
-      })
-      .slice(0, 6);
+    return transactions.filter((t) => {
+      if (trxRangeFilter === 'today') return t.date === todayStr;
+      if (trxRangeFilter === '1m') return t.date >= oneMonthStr;
+      if (trxRangeFilter === '2m') return t.date >= twoMonthsStr;
+      return true;
+    });
   }, [transactions, trxRangeFilter]);
+
+  const filteredRecentTransactions = useMemo(
+    () => allFilteredRecent.slice(0, 8),
+    [allFilteredRecent]
+  );
 
   // Aggregated Alert Priority Queue: low stocks & near expiry
   const allAlerts = useMemo(() => {
@@ -397,22 +399,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="text-[10px] opacity-75 font-medium">{data.fullDate}</div>
           <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-[11px] opacity-85">
-              <span className="w-2 h-2 rounded-full bg-rose-400" />
-              Spent
+              <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+              Pemasukan
             </span>
-            <span className="font-mono font-bold">{formatRupiah(data.keluar)}</span>
+            <span className="font-mono font-bold text-emerald-400">
+              {formatRupiah(data.masuk)}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-[11px] opacity-85">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              Income
+              <span className="w-2 h-2 rounded-full bg-[#EF4444]" />
+              Pengeluaran
             </span>
-            <span
-              className={`font-mono font-bold ${
-                isDark ? 'text-[#FCF1D0]' : 'text-emerald-400'
-              }`}
-            >
-              {formatRupiah(data.masuk)}
+            <span className="font-mono font-bold text-rose-400">
+              {formatRupiah(data.keluar)}
             </span>
           </div>
         </div>
@@ -427,10 +427,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {profile.storeName || 'KASRA Workspace'}
+            {profile.storeName || 'Ruang Kerja KASRA'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Sistem Pembukuan Kas Digital, Gudang FEFO & Asisten AI Multi-Klausul
+            Sistem Pembukuan Kas Digital, Gudang FEFO & Asisten Pintar Toko
           </p>
         </div>
 
@@ -461,7 +461,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button
             onClick={onOpenVoice}
             className="p-2.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
-            title="Buka mic suara Kasra"
+            title="Buka suara pintar Kasra"
           >
             <Mic className="w-4 h-4" />
           </button>
@@ -471,13 +471,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* ======================================================================
           2. MAIN 12-COLUMN BENTO GRID
          ====================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* ====================================================================
             LEFT COLUMN (5 Cols on Desktop):
-            - Clean Hero Balance Card (without credit card number / bank chips)
-            - Recent Transaction List
+            - Hero Balance Card
+            - Transaksi Terkini (Max 8 items + Lihat Semua Transaksi anchored at bottom)
+            - Pemasukan Hari Ini & Pengeluaran Hari Ini
            ==================================================================== */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 flex flex-col gap-6">
           {/* HERO BALANCE CARD */}
           <div
             className={`relative overflow-hidden rounded-[32px] p-6 shadow-xl transition-all ${
@@ -493,7 +494,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               }`}
             />
 
-            {/* Top Row: "Total savings / Saldo Kas" + Eye Icon */}
+            {/* Top Row: "Total Saldo Kas Usaha" + Eye Icon */}
             <div className="relative z-10 flex items-center justify-between gap-2">
               <button
                 type="button"
@@ -546,140 +547,151 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* RECENT TRANSACTION CARD */}
+          {/* TRANSAKSI TERKINI CARD (Max 8 Items, Bottom-Aligned Button) */}
           <div
-            className={`border rounded-[32px] p-5 shadow-xs space-y-4 transition-colors ${
+            className={`border rounded-[32px] p-5 shadow-xs flex-1 flex flex-col justify-between gap-4 transition-colors ${
               isDark
                 ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
                 : 'bg-white border-slate-200/80 text-slate-900'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Recent transaction</h3>
-              <button
-                type="button"
-                onClick={() => setActiveTab('cash')}
-                className="text-xs text-slate-400 hover:text-slate-900 underline underline-offset-4 font-medium cursor-pointer"
-              >
-                View All
-              </button>
-            </div>
-
-            {/* Timeframe Filter Pills: All | Today | 1 Month | 2 Month */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {[
-                { id: 'all', label: 'All' },
-                { id: 'today', label: 'Today' },
-                { id: '1m', label: '1 Month' },
-                { id: '2m', label: '2 Month' },
-              ].map((pill) => {
-                const isActive = trxRangeFilter === pill.id;
-                return (
-                  <button
-                    key={pill.id}
-                    type="button"
-                    onClick={() => setTrxRangeFilter(pill.id as any)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                      isActive
-                        ? isDark
-                          ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                          : 'bg-[#18181B] text-white shadow-xs'
-                        : isDark
-                        ? 'bg-[#172A57] text-[#FCF1D0]/80 hover:text-[#FCF1D0]'
-                        : 'bg-slate-100 text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    {pill.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Transaction Rows */}
-            {filteredRecentTransactions.length === 0 ? (
-              <div
-                className={`p-6 rounded-3xl border text-center text-xs space-y-1.5 ${
-                  isDark
-                    ? 'bg-[#172A57] border-[#345294] text-[#FCF1D0]/80'
-                    : 'bg-slate-50 border-slate-100 text-slate-400'
-                }`}
-              >
-                <div className="font-bold text-slate-700">Belum Ada Transaksi</div>
-                <p className="text-[11px]">
-                  Klik tombol <strong>+ Add Transaction</strong> untuk mulai mencatat kas toko.
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Transaksi Terkini{' '}
+                  {allFilteredRecent.length > 0 && (
+                    <span className="text-xs font-normal text-slate-400">
+                      ({filteredRecentTransactions.length}/{allFilteredRecent.length})
+                    </span>
+                  )}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cash')}
+                  className="text-xs text-slate-400 hover:text-slate-900 underline underline-offset-4 font-medium cursor-pointer shrink-0"
+                >
+                  Lihat Semua
+                </button>
               </div>
-            ) : (
-              <div className="space-y-2.5">
-                {filteredRecentTransactions.map((trx) => (
-                  <div
-                    key={trx.id}
-                    onClick={() => setActiveTab('cash')}
-                    className={`p-3 rounded-[22px] border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                      isDark
-                        ? 'bg-[#172A57] hover:bg-[#1E356B] border-[#345294]'
-                        : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-10 h-10 rounded-full border flex items-center justify-center text-lg shrink-0 shadow-2xs ${
-                          isDark
-                            ? 'bg-[#22396F] border-[#345294]'
-                            : 'bg-white border-slate-200/70'
-                        }`}
-                      >
-                        {getCategoryEmoji(trx.category)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate">
-                          {trx.description}
+
+              {/* Timeframe Filter Pills: Semua | Hari Ini | 1 Bulan | 2 Bulan */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'all', label: 'Semua' },
+                  { id: 'today', label: 'Hari Ini' },
+                  { id: '1m', label: '1 Bulan' },
+                  { id: '2m', label: '2 Bulan' },
+                ].map((pill) => {
+                  const isActive = trxRangeFilter === pill.id;
+                  return (
+                    <button
+                      key={pill.id}
+                      type="button"
+                      onClick={() => setTrxRangeFilter(pill.id as any)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                        isActive
+                          ? isDark
+                            ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                            : 'bg-[#18181B] text-white shadow-xs'
+                          : isDark
+                          ? 'bg-[#172A57] text-[#FCF1D0]/80 hover:text-[#FCF1D0]'
+                          : 'bg-slate-100 text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {pill.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Transaction Rows (Max 8 Displayed) */}
+              {filteredRecentTransactions.length === 0 ? (
+                <div
+                  className={`p-6 rounded-3xl border text-center text-xs space-y-1.5 ${
+                    isDark
+                      ? 'bg-[#172A57] border-[#345294] text-[#FCF1D0]/80'
+                      : 'bg-slate-50 border-slate-100 text-slate-400'
+                  }`}
+                >
+                  <div className="font-bold text-slate-700">Belum Ada Transaksi</div>
+                  <p className="text-[11px]">
+                    Klik tombol <strong>+ Catat Transaksi</strong> untuk mulai mencatat kas toko.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredRecentTransactions.map((trx) => (
+                    <div
+                      key={trx.id}
+                      onClick={() => setActiveTab('cash')}
+                      className={`p-3 rounded-[22px] border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isDark
+                          ? 'bg-[#172A57] hover:bg-[#1E356B] border-[#345294]'
+                          : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-10 h-10 rounded-full border flex items-center justify-center text-lg shrink-0 shadow-2xs ${
+                            isDark
+                              ? 'bg-[#22396F] border-[#345294]'
+                              : 'bg-white border-slate-200/70'
+                          }`}
+                        >
+                          {getCategoryEmoji(trx.category)}
                         </div>
-                        <div className="text-[11px] text-slate-400 truncate">
-                          {trx.category} • {formatDateIndo(trx.date)}
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">
+                            {trx.description}
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate">
+                            {trx.category} • {formatDateIndo(trx.date)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div
+                          className={`text-xs font-extrabold font-mono ${
+                            trx.type === 'income'
+                              ? isDark
+                                ? 'text-[#6EE7B7]'
+                                : 'text-emerald-600'
+                              : isDark
+                              ? 'text-[#FDA4AF]'
+                              : 'text-rose-500'
+                          }`}
+                        >
+                          {trx.type === 'income'
+                            ? `+${formatRupiah(trx.amount)}`
+                            : `-${formatRupiah(trx.amount)}`}
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                    <div className="text-right shrink-0">
-                      <div
-                        className={`text-xs font-extrabold font-mono ${
-                          trx.type === 'income'
-                            ? isDark
-                              ? 'text-[#6EE7B7]'
-                              : 'text-emerald-600'
-                            : isDark
-                            ? 'text-[#FDA4AF]'
-                            : 'text-rose-500'
-                        }`}
-                      >
-                        {trx.type === 'income'
-                          ? `+${formatRupiah(trx.amount)}`
-                          : `-${formatRupiah(trx.amount)}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Full-width "See all transaction" pill button */}
+            {/* Full-width "Lihat Semua Transaksi" pill button anchored cleanly at bottom */}
             <button
               type="button"
               onClick={() => setActiveTab('cash')}
-              className={`w-full py-3 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+              className={`mt-auto w-full py-3 rounded-full text-xs font-bold transition-colors cursor-pointer ${
                 isDark
                   ? 'bg-[#172A57] hover:bg-[#2B4684] text-[#FCF1D0] border border-[#345294]'
                   : 'bg-slate-100 hover:bg-slate-200/80 text-slate-800'
               }`}
             >
-              See all transaction
+              {allFilteredRecent.length > 8
+                ? `Lihat Semua Transaksi (${allFilteredRecent.length})`
+                : 'Lihat Semua Transaksi'}
             </button>
           </div>
 
-          {/* DAILY INCOME & DAILY EXPENSE SIDE-BY-SIDE CARDS (Moved Below Recent Transaction) */}
+          {/* PEMASUKAN HARI INI & PENGELUARAN HARI INI SIDE-BY-SIDE CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Daily Income Card */}
+            {/* Pemasukan Hari Ini Card */}
             <div
               className={`border rounded-[28px] p-5 space-y-2 shadow-2xs transition-colors ${
                 isDark
@@ -688,7 +700,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400">Daily Income</span>
+                <span className="text-xs font-semibold text-slate-400">Pemasukan Hari Ini</span>
                 <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </div>
@@ -707,7 +719,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
 
-            {/* Daily Expense Card */}
+            {/* Pengeluaran Hari Ini Card */}
             <div
               className={`border rounded-[28px] p-5 space-y-2 shadow-2xs transition-colors ${
                 isDark
@@ -716,7 +728,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400">Daily Expense</span>
+                <span className="text-xs font-semibold text-slate-400">Pengeluaran Hari Ini</span>
                 <div className="w-7 h-7 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
                   <TrendingDown className="w-3.5 h-3.5" />
                 </div>
@@ -739,12 +751,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* ====================================================================
             RIGHT / ANALYTICS COLUMN (7 Cols on Desktop):
-            - Statistic & Report This Month Card
+            - Statistik & Laporan Arus Kas Card
             - Antrean Peringatan Prioritas (FEFO & Stok Kritis)
             - Alokasi & Struktur Biaya Toko
            ==================================================================== */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* STATISTIC & REPORT THIS MONTH CARD */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* STATISTIK & LAPORAN ARUS KAS CARD */}
           <div
             className={`border rounded-[32px] p-6 shadow-xs space-y-5 transition-colors ${
               isDark
@@ -756,69 +768,69 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                  Statistic & Report this month
+                  Statistik & Laporan Arus Kas
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Visualisasi arus kas masuk dan keluar secara real-time
+                  Visualisasi uang masuk dan keluar secara langsung
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                {/* Switch between Pill Bar vs Line Chart */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Switch between Batang vs Garis Tren */}
                 <div className="inline-flex items-center p-1 rounded-full bg-slate-100 border border-slate-200/60 text-xs">
                   <button
                     type="button"
                     onClick={() => setChartVisualMode('pill')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer ${
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
                       chartVisualMode === 'pill'
                         ? isDark
                           ? 'bg-[#FCF1D0] text-[#0D1C42]'
                           : 'bg-white text-slate-900 shadow-2xs'
                         : 'text-slate-500'
                     }`}
-                    title="Pill Bar Chart"
+                    title="Grafik Batang"
                   >
                     <BarChart2 className="w-3.5 h-3.5" />
-                    <span>Pill Bar</span>
+                    <span>Batang</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setChartVisualMode('line')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer ${
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer whitespace-nowrap ${
                       chartVisualMode === 'line'
                         ? isDark
                           ? 'bg-[#FCF1D0] text-[#0D1C42]'
                           : 'bg-white text-slate-900 shadow-2xs'
                         : 'text-slate-500'
                     }`}
-                    title="Report Trend Line Chart"
+                    title="Grafik Garis Tren"
                   >
                     <Activity className="w-3.5 h-3.5" />
-                    <span>Trend Line</span>
+                    <span>Garis Tren</span>
                   </button>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setActiveTab('analytics')}
-                  className={`text-xs font-bold underline underline-offset-4 cursor-pointer ${
+                  className={`text-xs font-bold underline underline-offset-4 cursor-pointer whitespace-nowrap ${
                     isDark
                       ? 'text-[#FCF1D0] hover:opacity-80'
                       : 'text-indigo-600 hover:text-indigo-700'
                   }`}
                 >
-                  See details
+                  Lihat Detail
                 </button>
               </div>
             </div>
 
-            {/* Timeframe Selector Bar: Daily | Weekly | Monthly | Annual */}
-            <div className="grid grid-cols-4 p-1.5 rounded-full bg-slate-100 border border-slate-200/70 text-xs font-bold">
+            {/* Timeframe Selector Bar: Harian | Mingguan | Bulanan | Tahunan */}
+            <div className="grid grid-cols-4 p-1.5 rounded-full bg-slate-100 border border-slate-200/70 text-[11px] sm:text-xs font-bold">
               {[
-                { id: 'daily', label: 'Daily' },
-                { id: 'weekly', label: 'Weekly' },
-                { id: 'monthly', label: 'Monthly' },
-                { id: 'annual', label: 'Annual' },
+                { id: 'daily', label: 'Harian' },
+                { id: 'weekly', label: 'Mingguan' },
+                { id: 'monthly', label: 'Bulanan' },
+                { id: 'annual', label: 'Tahunan' },
               ].map((tf) => {
                 const isActive = timeframe === tf.id;
                 return (
@@ -826,7 +838,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     key={tf.id}
                     type="button"
                     onClick={() => setTimeframe(tf.id as any)}
-                    className={`py-2 rounded-full transition-all cursor-pointer ${
+                    className={`py-2 px-1.5 rounded-full transition-all cursor-pointer truncate ${
                       isActive
                         ? isDark
                           ? 'bg-[#FCF1D0] text-[#0D1C42] font-extrabold shadow-sm'
@@ -840,38 +852,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               })}
             </div>
 
-            {/* Report Sub-Filter Tabs: All | Spent | Income */}
-            <div className="grid grid-cols-3 p-1 rounded-full bg-slate-100/80 border border-slate-200/50 text-xs font-semibold">
-              {[
-                { id: 'all', label: 'All' },
-                { id: 'spent', label: 'Spent' },
-                { id: 'income', label: 'Income' },
-              ].map((tab) => {
-                const isActive = reportFilter === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setReportFilter(tab.id as any)}
-                    className={`py-1.5 rounded-full transition-all cursor-pointer ${
-                      isActive
-                        ? isDark
-                          ? 'bg-[#22396F] text-[#FCF1D0] font-bold shadow-2xs border border-[#345294]'
-                          : 'bg-white text-slate-900 font-bold shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+            {/* Report Sub-Filter Tabs: Semua | Pengeluaran | Pemasukan */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="grid grid-cols-3 flex-1 min-w-[220px] p-1 rounded-full bg-slate-100/80 border border-slate-200/50 text-[11px] sm:text-xs font-semibold">
+                {[
+                  { id: 'all', label: 'Semua' },
+                  { id: 'spent', label: 'Pengeluaran' },
+                  { id: 'income', label: 'Pemasukan' },
+                ].map((tab) => {
+                  const isActive = reportFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setReportFilter(tab.id as any)}
+                      className={`py-1.5 px-2 rounded-full transition-all cursor-pointer truncate ${
+                        isActive
+                          ? isDark
+                            ? 'bg-[#22396F] text-[#FCF1D0] font-bold shadow-2xs border border-[#345294]'
+                            : 'bg-white text-slate-900 font-bold shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Color Legend matching Regular Statistics (Hijau = Pemasukan, Merah = Pengeluaran) */}
+              <div className="flex items-center gap-3 text-[11px] font-semibold px-1">
+                {(reportFilter === 'all' || reportFilter === 'income') && (
+                  <span className="inline-flex items-center gap-1.5 text-slate-500">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+                    <span>Pemasukan</span>
+                  </span>
+                )}
+                {(reportFilter === 'all' || reportFilter === 'spent') && (
+                  <span className="inline-flex items-center gap-1.5 text-slate-500">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
+                    <span>Pengeluaran</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Chart Viewport */}
             <div className="h-64 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
                 {chartVisualMode === 'pill' ? (
-                  <BarChart data={chartData} barCategoryGap="22%">
+                  <BarChart data={chartData} barCategoryGap="22%" barGap={6}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke={isDark ? '#345294' : '#F1F5F9'}
+                    />
                     <XAxis
                       dataKey="label"
                       stroke={isDark ? '#B8C4E0' : '#94a3b8'}
@@ -887,42 +922,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         v === 0
                           ? '0'
                           : v >= 1000000
-                          ? `${(v / 1000000).toFixed(1)}M`
+                          ? `${(v / 1000000).toFixed(1)} Jt`
                           : v >= 1000
-                          ? `${Math.round(v / 1000)}K`
+                          ? `${Math.round(v / 1000)} Rb`
                           : `${v}`
                       }
                       tickLine={false}
                       axisLine={false}
                     />
                     <Tooltip
-                      cursor={{ fill: 'transparent' }}
+                      cursor={{ fill: isDark ? 'rgba(52,82,148,0.22)' : 'rgba(241,245,249,0.7)', radius: 14 }}
                       content={<CustomChartTooltip />}
                     />
-                    <Bar
-                      dataKey="total"
-                      radius={[999, 999, 999, 999]}
-                      barSize={32}
-                      background={{
-                        fill: isDark ? '#172A57' : '#F1F5F9',
-                        radius: 999,
-                      }}
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={
-                            entry.isHighlight
-                              ? isDark
-                                ? '#FCF1D0'
-                                : '#311068'
-                              : isDark
-                              ? '#4A6BB5'
-                              : '#6366F1'
-                          }
-                        />
-                      ))}
-                    </Bar>
+                    {(reportFilter === 'all' || reportFilter === 'income') && (
+                      <Bar
+                        name="Pemasukan"
+                        dataKey="masuk"
+                        fill="#10B981"
+                        radius={[999, 999, 999, 999]}
+                        barSize={reportFilter === 'all' ? 18 : 28}
+                        background={
+                          reportFilter !== 'all'
+                            ? {
+                                fill: isDark ? '#172A57' : '#F1F5F9',
+                                radius: 999,
+                              }
+                            : undefined
+                        }
+                      />
+                    )}
+                    {(reportFilter === 'all' || reportFilter === 'spent') && (
+                      <Bar
+                        name="Pengeluaran"
+                        dataKey="keluar"
+                        fill="#EF4444"
+                        radius={[999, 999, 999, 999]}
+                        barSize={reportFilter === 'all' ? 18 : 28}
+                        background={
+                          reportFilter !== 'all'
+                            ? {
+                                fill: isDark ? '#172A57' : '#F1F5F9',
+                                radius: 999,
+                              }
+                            : undefined
+                        }
+                      />
+                    )}
                   </BarChart>
                 ) : (
                   <AreaChart data={chartData}>
@@ -956,9 +1001,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         v === 0
                           ? '0'
                           : v >= 1000000
-                          ? `${(v / 1000000).toFixed(1)}M`
+                          ? `${(v / 1000000).toFixed(1)} Jt`
                           : v >= 1000
-                          ? `${Math.round(v / 1000)}K`
+                          ? `${Math.round(v / 1000)} Rb`
                           : `${v}`
                       }
                       tickLine={false}
@@ -999,9 +1044,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 : 'bg-white border-slate-200/80 text-slate-900'
             }`}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                   Antrean Peringatan Prioritas ({allAlerts.length})
                 </h3>
@@ -1011,7 +1056,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAlertsExpanded(!isAlertsExpanded)}
-                  className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+                  className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-semibold transition-colors cursor-pointer shrink-0"
                 >
                   <span>
                     {isAlertsExpanded
@@ -1028,43 +1073,68 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {displayedAlerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  onClick={() => setActiveTab('storage')}
-                  className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                    alert.badgeStyle === 'critical'
-                      ? 'bg-rose-50/70 hover:bg-rose-100/70 border-rose-200 border-l-4 border-l-rose-500'
-                      : 'bg-amber-50/70 hover:bg-amber-100/70 border-amber-200 border-l-4 border-l-amber-500'
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-slate-900">{alert.productName}</span>
-                      <span
-                        className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full ${
-                          alert.badgeStyle === 'critical'
-                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+              {displayedAlerts.map((alert) => {
+                const isCritical = alert.badgeStyle === 'critical';
+                return (
+                  <div
+                    key={alert.id}
+                    onClick={() => setActiveTab('storage')}
+                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                      isCritical
+                        ? isDark
+                          ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-400/40 border-l-4 border-l-rose-500'
+                          : 'bg-rose-50/85 hover:bg-rose-100/80 border-rose-200 border-l-4 border-l-rose-500'
+                        : isDark
+                        ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-400/40 border-l-4 border-l-amber-400'
+                        : 'bg-amber-50/90 hover:bg-amber-100/80 border-amber-200 border-l-4 border-l-amber-500'
+                    }`}
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-xs font-extrabold ${
+                            isDark ? 'text-[#FCF1D0]' : 'text-slate-900'
+                          }`}
+                        >
+                          {alert.productName}
+                        </span>
+                        <span
+                          className={`text-[10px] uppercase font-extrabold px-2.5 py-0.5 rounded-full tracking-wide shadow-2xs ${
+                            isCritical
+                              ? 'bg-rose-500 text-white'
+                              : isDark
+                              ? 'bg-amber-400 text-[#0D1C42]'
+                              : 'bg-amber-500 text-slate-950'
+                          }`}
+                        >
+                          {alert.badgeLabel}
+                        </span>
+                      </div>
+                      <div
+                        className={`text-[11px] font-medium ${
+                          isCritical
+                            ? isDark
+                              ? 'text-rose-200'
+                              : 'text-rose-700'
+                            : isDark
+                            ? 'text-amber-200'
+                            : 'text-amber-900'
                         }`}
                       >
-                        {alert.badgeLabel}
-                      </span>
+                        {alert.detail}
+                      </div>
                     </div>
-                    <div
-                      className={`text-[11px] ${
-                        alert.badgeStyle === 'critical' ? 'text-rose-700' : 'text-amber-800'
+
+                    <span
+                      className={`text-[11px] font-bold hidden sm:inline-block shrink-0 ${
+                        isDark ? 'text-[#FCF1D0]/85' : 'text-slate-600'
                       }`}
                     >
-                      {alert.detail}
-                    </div>
+                      Gudang →
+                    </span>
                   </div>
-
-                  <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
-                    Gudang →
-                  </span>
-                </div>
-              ))}
+                );
+              })}
 
               {allAlerts.length === 0 && (
                 <div

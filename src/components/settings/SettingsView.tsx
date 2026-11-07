@@ -5,6 +5,7 @@ import { useKasra } from '@/lib/store/KasraContext';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { formatThousands, parseThousands } from '@/lib/utils';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
+import { NOTIFICATION_CATEGORY_META } from '@/components/shared/NotificationCenterPopover';
 import {
   FileText,
   Save,
@@ -19,6 +20,8 @@ import {
   LogOut,
   AlertCircle,
   X,
+  BellRing,
+  Send,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -31,8 +34,14 @@ export const SettingsView: React.FC = () => {
     addSubcategory,
     deleteSubcategory,
     resetToMockData,
+    notificationPreferences,
+    browserNotificationPermission,
+    updateNotificationPreferences,
+    requestBrowserNotificationPermission,
+    sendTestBrowserNotification,
   } = useKasra();
   const { user, logout, changePassword } = useAuth();
+  const [notifTestMsg, setNotifTestMsg] = useState<string | null>(null);
 
   const [storeName, setStoreName] = useState(profile.storeName);
   const [businessCategory, setBusinessCategory] = useState(profile.businessCategory);
@@ -383,7 +392,134 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. Akun Pengguna & Keamanan */}
+      {/* 5. Pengaturan Notifikasi & Izin Browser */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <BellRing className="w-4 h-4 text-amber-500" />
+              <span>Pengaturan Notifikasi & Persetujuan Browser</span>
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Atur peringatan uang masuk/keluar, stok habis, batas kedaluwarsa, serta izin pop-up browser perangkat Anda
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {browserNotificationPermission !== 'granted' &&
+              browserNotificationPermission !== 'unsupported' && (
+                <button
+                  type="button"
+                  onClick={() => requestBrowserNotificationPermission()}
+                  className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Izinkan Notifikasi Browser
+                </button>
+              )}
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await sendTestBrowserNotification();
+                setNotifTestMsg(
+                  ok
+                    ? 'Tes notifikasi berhasil dikirim ke browser & lonceng aplikasi!'
+                    : browserNotificationPermission === 'denied'
+                    ? 'Izin notifikasi diblokir di browser. Ubah izin situs di ikon gembok alamat browser.'
+                    : 'Notifikasi masuk ke lonceng aplikasi. Klik "Izinkan Notifikasi Browser" untuk pop-up layar.'
+                );
+                setTimeout(() => setNotifTestMsg(null), 4000);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Tes Notifikasi</span>
+            </button>
+          </div>
+        </div>
+
+        {notifTestMsg && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+            {notifTestMsg}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 cursor-pointer">
+            <div>
+              <div className="text-xs font-bold text-slate-900">
+                Notifikasi Pop-up Browser (Status:{' '}
+                {browserNotificationPermission === 'granted'
+                  ? 'Diizinkan'
+                  : browserNotificationPermission === 'denied'
+                  ? 'Diblokir'
+                  : browserNotificationPermission === 'unsupported'
+                  ? 'Tidak Didukung'
+                  : 'Belum Diizinkan'}
+                )
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Tampilkan pemberitahuan langsung dari browser perangkat
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={
+                notificationPreferences.browserPushEnabled &&
+                browserNotificationPermission === 'granted'
+              }
+              onChange={async () => {
+                const nextVal = !notificationPreferences.browserPushEnabled;
+                if (nextVal && browserNotificationPermission === 'default') {
+                  const perm = await requestBrowserNotificationPermission();
+                  updateNotificationPreferences({ browserPushEnabled: perm === 'granted' });
+                } else {
+                  updateNotificationPreferences({ browserPushEnabled: nextVal });
+                }
+              }}
+              className="w-4 h-4 accent-emerald-600 cursor-pointer shrink-0"
+            />
+          </label>
+
+          <label className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 cursor-pointer">
+            <div>
+              <div className="text-xs font-bold text-slate-900">Riwayat Lonceng di Aplikasi</div>
+              <div className="text-[11px] text-slate-500">
+                Catat semua peringatan pada pusat notifikasi di bilah atas
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={notificationPreferences.inAppEnabled}
+              onChange={(e) => updateNotificationPreferences({ inAppEnabled: e.target.checked })}
+              className="w-4 h-4 accent-emerald-600 cursor-pointer shrink-0"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
+          {NOTIFICATION_CATEGORY_META.map((item) => (
+            <label
+              key={item.key}
+              className="p-3 rounded-xl bg-slate-50/70 hover:bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 cursor-pointer transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900">{item.label}</div>
+                <div className="text-[11px] text-slate-500">{item.desc}</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={notificationPreferences[item.key]}
+                onChange={(e) =>
+                  updateNotificationPreferences({ [item.key]: e.target.checked })
+                }
+                className="w-4 h-4 accent-emerald-600 cursor-pointer shrink-0"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 6. Akun Pengguna & Keamanan */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5 shadow-xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -564,7 +700,7 @@ export const SettingsView: React.FC = () => {
           logout();
         }}
         title="Keluar dari Akun KASRA"
-        message="Apakah Anda yakin ingin keluar dari sesi akun toko Anda? Anda perlu memasukkan kata sandi kembali untuk mengakses workspace."
+        message="Apakah Anda yakin ingin keluar dari sesi akun toko Anda? Anda perlu memasukkan kata sandi kembali untuk mengakses ruang kerja toko."
         confirmText="Ya, Keluar Akun"
         isDanger={true}
       />

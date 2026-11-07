@@ -44,26 +44,26 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
   const navItems: TabItem[] = [
     {
       id: 'dashboard',
-      label: 'Home & Ringkasan',
-      shortLabel: 'Home',
+      label: 'Beranda & Ringkasan',
+      shortLabel: 'Beranda',
       icon: Home,
     },
     {
       id: 'analytics',
-      label: 'Statistic & Laporan',
-      shortLabel: 'Statistic',
+      label: 'Statistik & Laporan',
+      shortLabel: 'Statistik',
       icon: BarChart2,
     },
     {
       id: 'cash',
-      label: 'History & Buku Kas',
-      shortLabel: 'History',
+      label: 'Kas & Buku Transaksi',
+      shortLabel: 'Kas',
       icon: Wallet,
     },
     {
       id: 'storage',
       label: 'Gudang & Stok FEFO',
-      shortLabel: 'Storage',
+      shortLabel: 'Gudang',
       icon: Package,
       badge:
         criticalStockCount + nearExpiryCount > 0
@@ -73,7 +73,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
     {
       id: 'settings',
       label: 'Profil & Pengaturan',
-      shortLabel: 'Profile',
+      shortLabel: 'Profil',
       icon: User,
     },
   ];
@@ -102,7 +102,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                 ? 'bg-[#0D1C42] border border-[#345294] text-[#FCF1D0]'
                 : 'bg-gradient-to-br from-[#1E1B4B] to-[#4C1D95] border border-indigo-900 text-white'
             }`}
-            title={`${profile.storeName || 'Toko'} — KASRA Workspace`}
+            title={`${profile.storeName || 'Toko'} — Ruang Kerja KASRA`}
           >
             <KasraLogo
               className={`w-6 h-6 group-hover:scale-110 transition-transform select-none ${
@@ -115,7 +115,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           <button
             type="button"
             onClick={onOpenQuickAdd}
-            title="Tambah Transaksi Cepat (Kalkulator & Kategori)"
+            title="Catat Transaksi Cepat"
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 group ${
               isDark
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-[0_6px_18px_rgba(252,241,208,0.25)] hover:opacity-95'
@@ -136,7 +136,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   title={item.label}
-                  className={`relative w-12 py-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group cursor-pointer ${
+                  className={`relative w-14 py-2.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group cursor-pointer ${
                     isActive
                       ? isDark
                         ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
@@ -147,7 +147,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                   }`}
                 >
                   <Icon className="w-5 h-5 stroke-[2.1]" />
-                  <span className="text-[9px] font-bold tracking-tight">
+                  <span className="text-[9px] font-bold tracking-tight whitespace-nowrap">
                     {item.shortLabel}
                   </span>
 

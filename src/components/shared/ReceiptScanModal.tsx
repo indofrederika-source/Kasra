@@ -64,7 +64,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
               <ScanLine className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Scan Foto Nota Belanja</h2>
+              <h2 className="text-sm font-bold text-slate-900">Pindai Foto Nota Belanja</h2>
               <p className="text-[11px] text-slate-500">
                 Membaca baris nota untuk menyiapkan draf Kas Keluar & Stok Masuk
               </p>
@@ -92,7 +92,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
               <div className="space-y-3">
                 <img
                   src={selectedImage}
-                  alt="Preview Nota"
+                  alt="Pratinjau Nota"
                   className="max-h-52 rounded-lg object-contain mx-auto border border-slate-200 shadow-xs"
                 />
                 <p className="text-xs text-slate-800 font-medium">{receiptName}</p>

@@ -233,38 +233,38 @@ export const CashView: React.FC<CashViewProps> = ({
           {onOpenQuickAdd && (
             <button
               onClick={() => onOpenQuickAdd('income')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer ${
                 theme === 'dark'
                   ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
                   : 'bg-[#18181B] hover:bg-slate-800 text-white'
               }`}
             >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Add Transaction (Numpad)</span>
+              <Plus className="w-4 h-4 stroke-[3] shrink-0" />
+              <span>Catat Transaksi Cepat</span>
             </button>
           )}
 
           <button
             onClick={() => setIsManualModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs whitespace-nowrap cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Form Lengkap</span>
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span>Formulir Lengkap</span>
           </button>
 
           <button
             onClick={onOpenScan}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs whitespace-nowrap cursor-pointer"
           >
-            <ScanLine className="w-3.5 h-3.5 text-slate-500" />
-            <span>Scan Foto Nota</span>
+            <ScanLine className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span>Pindai Foto Nota</span>
           </button>
 
           <button
             onClick={onOpenVoice}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs whitespace-nowrap cursor-pointer"
           >
-            <Mic className="w-3.5 h-3.5 text-slate-500" />
+            <Mic className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <span>Bicara</span>
           </button>
         </div>
@@ -406,7 +406,7 @@ export const CashView: React.FC<CashViewProps> = ({
                           Buku Kas Masih Kosong (0 Transaksi)
                         </p>
                         <p className="text-[11px] text-slate-400">
-                          Klik tombol "+ Catat Transaksi", "Scan Foto Nota", atau "Bicara" untuk mulai mencatat.
+                          Klik tombol &quot;+ Catat Transaksi Cepat&quot;, &quot;Pindai Foto Nota&quot;, atau &quot;Bicara&quot; untuk mulai mencatat.
                         </p>
                       </div>
                     ) : (
@@ -544,19 +544,19 @@ export const CashView: React.FC<CashViewProps> = ({
 
       {/* 4. Floating Action Dock */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white border border-slate-200 rounded-full px-5 py-2.5 shadow-2xl shadow-slate-900/10 flex items-center gap-4 animate-in slide-in-from-bottom-3 duration-150">
-          <div className="text-xs text-slate-700 font-medium">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-3xl sm:rounded-full px-4 sm:px-5 py-2.5 shadow-2xl shadow-slate-900/10 flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 animate-in slide-in-from-bottom-3 duration-150">
+          <div className="text-xs text-slate-700 font-medium whitespace-nowrap">
             <span className="text-slate-900 font-bold font-mono">{selectedIds.length}</span> transaksi dipilih
           </div>
 
           <button
             onClick={() => setSelectedIds([])}
-            className="text-xs text-slate-500 hover:text-slate-900 transition-colors font-medium"
+            className="text-xs text-slate-500 hover:text-slate-900 transition-colors font-medium whitespace-nowrap cursor-pointer"
           >
             Batal
           </button>
 
-          <div className="w-[1px] h-4 bg-slate-200" />
+          <div className="hidden sm:block w-[1px] h-4 bg-slate-200" />
 
           {/* Export Selected to Excel */}
           <button
@@ -564,18 +564,18 @@ export const CashView: React.FC<CashViewProps> = ({
               const selectedTrx = transactions.filter((t) => selectedIds.includes(t.id));
               exportToExcel(profile, selectedTrx, products);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-800 transition-colors border border-slate-200"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-800 transition-colors border border-slate-200 whitespace-nowrap cursor-pointer"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
-            <span>Export Excel</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+            <span>Ekspor Excel</span>
           </button>
 
           {/* Delete Selected */}
           <button
             onClick={() => setIsMultiDeleteOpen(true)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition-colors shadow-sm shadow-rose-600/20"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white transition-colors shadow-sm shadow-rose-600/20 whitespace-nowrap cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
             <span>Hapus</span>
           </button>
         </div>

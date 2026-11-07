@@ -152,7 +152,7 @@ export default function KasraPage() {
     <React.Suspense
       fallback={
         <div className="h-screen w-screen bg-[#F3F4F8] flex items-center justify-center text-slate-500 text-xs font-mono">
-          Memuat Workspace KASRA...
+          Memuat Ruang Kerja KASRA...
         </div>
       }
     >
