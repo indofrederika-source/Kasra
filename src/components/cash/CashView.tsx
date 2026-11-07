@@ -29,6 +29,7 @@ import {
 interface CashViewProps {
   onOpenVoice: () => void;
   onOpenScan: () => void;
+  onOpenQuickAdd?: (type?: TransactionType) => void;
 }
 
 function getLocalTodayIso(): string {
@@ -39,7 +40,11 @@ function getLocalTodayIso(): string {
   return `${y}-${m}-${d}`;
 }
 
-export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) => {
+export const CashView: React.FC<CashViewProps> = ({
+  onOpenVoice,
+  onOpenScan,
+  onOpenQuickAdd,
+}) => {
   const {
     transactions,
     addTransaction,
@@ -51,6 +56,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
     categoryDefinitions,
     monthIncome,
     monthExpense,
+    theme,
   } = useKasra();
 
   // Search & Filter state
@@ -224,12 +230,26 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onOpenQuickAdd && (
+            <button
+              onClick={() => onOpenQuickAdd('income')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer ${
+                theme === 'dark'
+                  ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
+                  : 'bg-[#18181B] hover:bg-slate-800 text-white'
+              }`}
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Add Transaction (Numpad)</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsManualModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Catat Transaksi</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Form Lengkap</span>
           </button>
 
           <button

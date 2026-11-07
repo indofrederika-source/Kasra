@@ -2,48 +2,61 @@
 
 import React, { useState, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
+import { TransactionType } from '@/types';
 import { formatRupiah, formatDateIndo } from '@/lib/utils';
 import { parseOmniboxInput } from '@/lib/ai/parser';
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  Package,
   AlertTriangle,
   Mic,
-  ScanLine,
-  Plus,
   ChevronDown,
   ChevronUp,
-  Target,
   ShieldCheck,
-  Wallet,
   PieChart,
-  Calculator,
+  Eye,
+  EyeOff,
+  BarChart2,
+  Activity,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
+  CartesianGrid,
 } from 'recharts';
 
 interface DashboardViewProps {
   onOpenVoice: () => void;
   onOpenScan: () => void;
   onOpenCalculator?: () => void;
+  onOpenQuickAdd?: (type?: TransactionType) => void;
 }
 
 const COST_COLORS = [
-  'bg-lime-500',
-  'bg-amber-500',
-  'bg-slate-600',
-  'bg-sky-500',
+  'bg-amber-400',
   'bg-emerald-500',
+  'bg-indigo-500',
+  'bg-sky-500',
   'bg-rose-500',
+  'bg-teal-500',
 ];
+
+function getCategoryEmoji(category: string): string {
+  const c = (category || '').toLowerCase();
+  if (c.includes('penjualan') || c.includes('makan') || c.includes('kopi')) return '🍜';
+  if (c.includes('bahan') || c.includes('dapur') || c.includes('sayur')) return '🛒';
+  if (c.includes('kemasan') || c.includes('cup')) return '🛍️';
+  if (c.includes('listrik') || c.includes('air')) return '💡';
+  if (c.includes('gaji') || c.includes('karyawan')) return '💼';
+  return '🧾';
+}
 
 function toLocalDateStr(d: Date): string {
   const y = d.getFullYear();
@@ -54,8 +67,6 @@ function toLocalDateStr(d: Date): string {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenVoice,
-  onOpenScan,
-  onOpenCalculator,
 }) => {
   const {
     products,
@@ -64,28 +75,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     categoryDefinitions,
     todayIncome,
     todayExpense,
-    todayProfit,
     monthIncome,
+    monthExpense,
     setActiveTab,
     setActiveDraft,
+    theme,
   } = useKasra();
+
+  const isDark = theme === 'dark';
 
   // Omnibox state
   const [omniboxText, setOmniboxText] = useState('');
 
-  // Expand state for Alert Queue (strictly in-place expand)
+  // Hero Balance visibility (Eye toggle)
+  const [showBalance, setShowBalance] = useState(true);
+
+  // Expand state for Alert Queue
   const [isAlertsExpanded, setIsAlertsExpanded] = useState(false);
 
-  // Timeframe selector for balance chart ('7d' | '30d')
-  const [chartRange, setChartRange] = useState<'7d' | '30d'>('7d');
+  // Statistic Timeframe (Daily | Weekly | Monthly | Annual)
+  const [timeframe, setTimeframe] = useState<'daily' | 'weekly' | 'monthly' | 'annual'>('daily');
 
-  // Hover state on chart to display values in header without covering the bars
-  const [activeHoverData, setActiveHoverData] = useState<{
-    day: string;
-    masuk: number;
-    keluar: number;
-    laba: number;
-  } | null>(null);
+  // Report Data Filter (All | Spent | Income)
+  const [reportFilter, setReportFilter] = useState<'all' | 'spent' | 'income'>('all');
+
+  // Visual Chart Mode: 'pill' (Pill Bars) vs 'line' (Smooth Line Report)
+  const [chartVisualMode, setChartVisualMode] = useState<'pill' | 'line'>('pill');
+
+  // Recent Transaction Time Filter (All | Today | 1 Month | 2 Month)
+  const [trxRangeFilter, setTrxRangeFilter] = useState<'all' | 'today' | '1m' | '2m'>('all');
 
   // Handle Omnibox quick NLP submit
   const handleOmniboxSubmit = (e: React.FormEvent) => {
@@ -96,56 +114,181 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setOmniboxText('');
   };
 
-  // Cumulative store cash balance (starts at Rp 0 when empty)
+  // Cumulative store cash balance
   const totalStoreBalance = useMemo(() => {
-    return transactions.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc - t.amount), 0);
+    return transactions.reduce(
+      (acc, t) => (t.type === 'income' ? acc + t.amount : acc - t.amount),
+      0
+    );
   }, [transactions]);
 
-  // Target bulanan calculation (starts at 0 when empty)
-  const monthlyTarget = profile.monthlyTarget || 0;
-  const targetPercent =
-    monthlyTarget > 0 ? Math.min(100, Math.round((monthIncome / monthlyTarget) * 100)) : 0;
+  // Growth percentage this month
+  const monthlyGrowthPercent = useMemo(() => {
+    if (monthIncome === 0 && monthExpense === 0) return 0;
+    if (monthExpense === 0) return 100;
+    return Math.round(((monthIncome - monthExpense) / Math.max(1, monthExpense)) * 100);
+  }, [monthIncome, monthExpense]);
 
-  // Dynamic cash flow chart computed from real transactions (7d & 30d)
+  // Dynamic Chart Data for Daily (7d), Weekly (4w), Monthly (6m), Annual (4y)
   const chartData = useMemo(() => {
-    const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const now = new Date();
-    const result = [];
-    const count = chartRange === '7d' ? 7 : 30;
+    const result: Array<{
+      label: string;
+      fullDate: string;
+      masuk: number;
+      keluar: number;
+      total: number;
+      isHighlight?: boolean;
+    }> = [];
 
-    for (let i = count - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = toLocalDateStr(d);
-      const isToday = i === 0;
-      const label =
-        chartRange === '7d'
-          ? isToday
-            ? 'Hari Ini'
-            : dayNames[d.getDay()]
-          : `${d.getDate()}/${d.getMonth() + 1}`;
+    if (timeframe === 'daily') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = toLocalDateStr(d);
+        let masuk = 0;
+        let keluar = 0;
+        transactions.forEach((t) => {
+          if (t.date === dateStr) {
+            if (t.type === 'income') masuk += t.amount;
+            else keluar += t.amount;
+          }
+        });
+        const val =
+          reportFilter === 'income'
+            ? masuk
+            : reportFilter === 'spent'
+            ? keluar
+            : masuk + keluar;
+        result.push({
+          label: dayNames[d.getDay()],
+          fullDate: formatDateIndo(dateStr),
+          masuk,
+          keluar,
+          total: val,
+          isHighlight: i === 0,
+        });
+      }
+    } else if (timeframe === 'weekly') {
+      for (let w = 3; w >= 0; w--) {
+        const endD = new Date(now);
+        endD.setDate(endD.getDate() - w * 7);
+        const startD = new Date(endD);
+        startD.setDate(startD.getDate() - 6);
+        const startStr = toLocalDateStr(startD);
+        const endStr = toLocalDateStr(endD);
 
-      let masuk = 0;
-      let keluar = 0;
+        let masuk = 0;
+        let keluar = 0;
+        transactions.forEach((t) => {
+          if (t.date >= startStr && t.date <= endStr) {
+            if (t.type === 'income') masuk += t.amount;
+            else keluar += t.amount;
+          }
+        });
+        const val =
+          reportFilter === 'income'
+            ? masuk
+            : reportFilter === 'spent'
+            ? keluar
+            : masuk + keluar;
+        result.push({
+          label: `W${4 - w}`,
+          fullDate: `${startD.getDate()} - ${endD.getDate()} ${monthNames[endD.getMonth()]}`,
+          masuk,
+          keluar,
+          total: val,
+          isHighlight: w === 0,
+        });
+      }
+    } else if (timeframe === 'monthly') {
+      for (let m = 5; m >= 0; m--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+        const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        let masuk = 0;
+        let keluar = 0;
+        transactions.forEach((t) => {
+          if (t.date.startsWith(prefix)) {
+            if (t.type === 'income') masuk += t.amount;
+            else keluar += t.amount;
+          }
+        });
+        const val =
+          reportFilter === 'income'
+            ? masuk
+            : reportFilter === 'spent'
+            ? keluar
+            : masuk + keluar;
+        result.push({
+          label: monthNames[d.getMonth()],
+          fullDate: `${monthNames[d.getMonth()]} ${d.getFullYear()}`,
+          masuk,
+          keluar,
+          total: val,
+          isHighlight: m === 0,
+        });
+      }
+    } else {
+      for (let y = 3; y >= 0; y--) {
+        const yr = String(now.getFullYear() - y);
+        let masuk = 0;
+        let keluar = 0;
+        transactions.forEach((t) => {
+          if (t.date.startsWith(yr)) {
+            if (t.type === 'income') masuk += t.amount;
+            else keluar += t.amount;
+          }
+        });
+        const val =
+          reportFilter === 'income'
+            ? masuk
+            : reportFilter === 'spent'
+            ? keluar
+            : masuk + keluar;
+        result.push({
+          label: yr,
+          fullDate: `Tahun ${yr}`,
+          masuk,
+          keluar,
+          total: val,
+          isHighlight: y === 0,
+        });
+      }
+    }
 
-      transactions.forEach((t) => {
-        if (t.date === dateStr) {
-          if (t.type === 'income') masuk += t.amount;
-          else if (t.type === 'expense') keluar += t.amount;
-        }
-      });
-
-      result.push({
-        day: label,
-        masuk,
-        keluar,
-        laba: masuk - keluar,
-        dateStr,
+    const maxVal = Math.max(...result.map((r) => r.total));
+    if (maxVal > 0) {
+      result.forEach((r) => {
+        r.isHighlight = r.total === maxVal;
       });
     }
 
     return result;
-  }, [transactions, chartRange]);
+  }, [transactions, timeframe, reportFilter]);
+
+  // Filtered Recent Transactions (All | Today | 1 Month | 2 Month)
+  const filteredRecentTransactions = useMemo(() => {
+    const now = new Date();
+    const todayStr = toLocalDateStr(now);
+    const oneMonthAgo = new Date(now);
+    oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+    const oneMonthStr = toLocalDateStr(oneMonthAgo);
+
+    const twoMonthsAgo = new Date(now);
+    twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
+    const twoMonthsStr = toLocalDateStr(twoMonthsAgo);
+
+    return transactions
+      .filter((t) => {
+        if (trxRangeFilter === 'today') return t.date === todayStr;
+        if (trxRangeFilter === '1m') return t.date >= oneMonthStr;
+        if (trxRangeFilter === '2m') return t.date >= twoMonthsStr;
+        return true;
+      })
+      .slice(0, 6);
+  }, [transactions, trxRangeFilter]);
 
   // Aggregated Alert Priority Queue: low stocks & near expiry
   const allAlerts = useMemo(() => {
@@ -163,7 +306,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
     products.forEach((p) => {
-      // Low stock alerts
       if (p.currentStock <= p.minStockAlert) {
         const isCritical = p.currentStock === 0;
         alerts.push({
@@ -173,11 +315,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           type: 'stock',
           badgeLabel: isCritical ? 'HABIS' : 'STOK MENIPIS',
           badgeStyle: isCritical ? 'critical' : 'warning',
-          detail: `Sisa: ${p.currentStock} ${p.unit} (Alarm batas aman: ${p.minStockAlert} ${p.unit})`,
+          detail: `Sisa: ${p.currentStock} ${p.unit} (Batas aman: ${p.minStockAlert} ${p.unit})`,
         });
       }
 
-      // Expiry alerts
       if (p.expiryDate) {
         const parts = p.expiryDate.split('-').map(Number);
         if (parts.length === 3) {
@@ -191,11 +332,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               productId: p.id,
               productName: p.name,
               type: 'expiry',
-              badgeLabel: isExpired ? 'KADALUARSA' : diffDays === 0 ? 'HARI INI' : `${diffDays} HARI LAGI`,
+              badgeLabel: isExpired
+                ? 'KADALUARSA'
+                : diffDays === 0
+                ? 'HARI INI'
+                : `${diffDays} HARI LAGI`,
               badgeStyle: isExpired ? 'critical' : 'warning',
               detail: isExpired
                 ? `Telah lewat kadaluarsa pada ${formatDateIndo(p.expiryDate)}`
-                : `Kadaluarsa pada ${formatDateIndo(p.expiryDate)} (prioritaskan pemakaian FEFO)`,
+                : `Kadaluarsa pada ${formatDateIndo(p.expiryDate)} (prioritaskan FEFO)`,
             });
           }
         }
@@ -205,9 +350,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return alerts;
   }, [products]);
 
-  const displayedAlerts = isAlertsExpanded ? allAlerts : allAlerts.slice(0, 5);
+  const displayedAlerts = isAlertsExpanded ? allAlerts : allAlerts.slice(0, 4);
 
-  // Dynamic Cost Analysis by Real Transaction Categories (0 when empty)
+  // Dynamic Cost Analysis
   const costAnalysis = useMemo(() => {
     const catMap: Record<string, number> = {};
     let totalExpenseCalc = 0;
@@ -237,23 +382,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   }, [transactions]);
 
-  // Non-obstructive Tooltip that stays pinned at the very top (y: 0) so it NEVER covers the bars
-  const CustomBarTooltip = ({ active, payload, label }: any) => {
+  // Floating Tooltip Box
+  const CustomChartTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
-      const masuk = payload.find((p: any) => p.dataKey === 'masuk')?.value || 0;
-      const keluar = payload.find((p: any) => p.dataKey === 'keluar')?.value || 0;
-      const laba = masuk - keluar;
+      const data = payload[0].payload;
       return (
-        <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-md text-xs flex items-center gap-3 font-mono pointer-events-none select-none">
-          <span className="font-bold text-slate-900 font-sans">{label}:</span>
-          <span className="text-emerald-700 font-bold">+{formatRupiah(masuk)}</span>
-          <span className="text-rose-600 font-bold">-{formatRupiah(keluar)}</span>
-          <span className="text-slate-500 font-semibold border-l border-slate-200 pl-2">
-            Laba:{' '}
-            <span className={laba >= 0 ? 'text-slate-900 font-bold' : 'text-rose-600 font-bold'}>
-              {formatRupiah(laba)}
+        <div
+          className={`rounded-2xl px-3.5 py-2.5 shadow-xl text-xs space-y-1 pointer-events-none select-none border ${
+            isDark
+              ? 'bg-[#0D1C42] text-[#FCF1D0] border-[#345294]'
+              : 'bg-[#18181B] text-white border-slate-800'
+          }`}
+        >
+          <div className="text-[10px] opacity-75 font-medium">{data.fullDate}</div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-[11px] opacity-85">
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              Spent
             </span>
-          </span>
+            <span className="font-mono font-bold">{formatRupiah(data.keluar)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-[11px] opacity-85">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Income
+            </span>
+            <span
+              className={`font-mono font-bold ${
+                isDark ? 'text-[#FCF1D0]' : 'text-emerald-400'
+              }`}
+            >
+              {formatRupiah(data.masuk)}
+            </span>
+          </div>
         </div>
       );
     }
@@ -261,15 +422,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8">
-      {/* 1. Page Title & Omnibox Quick Record Station */}
+    <div className="space-y-6 pb-24 md:pb-10">
+      {/* 1. Top Greeting & Omnibox Quick AI Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Dashboard Operasional
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            {profile.storeName || 'KASRA Workspace'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Ringkasan harian arus kas toko, antrean peringatan barang, dan manajemen gudang
+            Sistem Pembukuan Kas Digital, Gudang FEFO & Asisten AI Multi-Klausul
           </p>
         </div>
 
@@ -280,14 +441,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               type="text"
               value={omniboxText}
               onChange={(e) => setOmniboxText(e.target.value)}
-              placeholder="Catat cepat kejadian toko (Enter)..."
-              className="w-full bg-white border border-slate-200/90 focus:border-slate-900 rounded-full pl-9 pr-16 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors shadow-2xs"
+              placeholder="Ketik cepat: 'beli ayam 6 ekor 120rb'..."
+              className="w-full bg-white border border-slate-200/90 focus:border-slate-400 rounded-full pl-9 pr-16 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none transition-colors shadow-2xs"
             />
             <Mic className="w-3.5 h-3.5 text-slate-400 absolute left-3.5" />
             <button
               type="submit"
               disabled={!omniboxText.trim()}
-              className="absolute right-1.5 px-3 py-1 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-[11px] font-bold transition-all shadow-xs cursor-pointer"
+              className={`absolute right-1.5 px-3.5 py-1 rounded-full disabled:opacity-40 text-[11px] font-bold transition-all cursor-pointer ${
+                isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42]'
+                  : 'bg-[#18181B] text-white'
+              }`}
             >
               Kirim
             </button>
@@ -303,221 +468,537 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Main 12-Column Bento Grid */}
+      {/* ======================================================================
+          2. MAIN 12-COLUMN BENTO GRID
+         ====================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN (8 Cols): Chart, Statistics, and Antrean Peringatan Prioritas right underneath */}
-        <div className="lg:col-span-8 space-y-6">
-          {/* Main Chart Card */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-xs text-slate-500 font-medium block">Tren Arus Kas Toko</span>
-                <div className="text-2xl font-bold text-slate-900 tracking-tight font-mono mt-0.5">
-                  {activeHoverData ? (
-                    <span className="inline-flex items-center gap-2 flex-wrap">
-                      <span>{activeHoverData.day}:</span>
-                      <span className="text-emerald-600">+{formatRupiah(activeHoverData.masuk)}</span>
-                      <span className="text-slate-300">/</span>
-                      <span className="text-rose-600">-{formatRupiah(activeHoverData.keluar)}</span>
-                    </span>
-                  ) : (
-                    `Arus Kas ${chartRange === '7d' ? '7 Hari Terakhir' : '30 Hari Terakhir'}`
-                  )}
-                </div>
-              </div>
+        {/* ====================================================================
+            LEFT COLUMN (5 Cols on Desktop):
+            - Clean Hero Balance Card (without credit card number / bank chips)
+            - Recent Transaction List
+           ==================================================================== */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* HERO BALANCE CARD */}
+          <div
+            className={`relative overflow-hidden rounded-[32px] p-6 shadow-xl transition-all ${
+              isDark
+                ? 'bg-gradient-to-br from-[#22396F] via-[#284482] to-[#1A2E5E] text-[#FCF1D0] border border-[#3858A0] shadow-[#071026]/50'
+                : 'bg-gradient-to-br from-[#130924] via-[#2B125A] to-[#4A1D96] text-white shadow-indigo-950/20'
+            }`}
+          >
+            {/* Subtle Ambient Glow */}
+            <div
+              className={`pointer-events-none absolute -right-12 -top-12 w-44 h-44 rounded-full blur-3xl opacity-25 ${
+                isDark ? 'bg-[#FCF1D0]' : 'bg-purple-400'
+              }`}
+            />
 
-              <div className="flex items-center gap-3">
-                {/* Timeframe Pill (7 Hari / 30 Hari) */}
-                <div className="flex items-center p-1 bg-slate-100 rounded-full border border-slate-200/70 text-xs font-semibold">
-                  <button
-                    onClick={() => setChartRange('7d')}
-                    className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                      chartRange === '7d'
-                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    7 Hari
-                  </button>
-                  <button
-                    onClick={() => setChartRange('30d')}
-                    className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                      chartRange === '30d'
-                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    30 Hari
-                  </button>
-                </div>
+            {/* Top Row: "Total savings / Saldo Kas" + Eye Icon */}
+            <div className="relative z-10 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBalance((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-opacity opacity-85 hover:opacity-100 cursor-pointer ${
+                  isDark ? 'text-[#FCF1D0]' : 'text-white'
+                }`}
+              >
+                <span>Total Saldo Kas Usaha</span>
+                {showBalance ? (
+                  <Eye className="w-3.5 h-3.5 opacity-80" />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5 opacity-80" />
+                )}
+              </button>
 
-                {/* Legend Indicators */}
-                <div className="hidden sm:flex items-center gap-3 text-[11px] font-medium text-slate-600">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span>Masuk</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    <span>Keluar</span>
-                  </div>
-                </div>
-              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] font-bold ${
+                  isDark
+                    ? 'bg-[#FCF1D0] text-[#0D1C42]'
+                    : 'bg-white/15 text-white border border-white/20'
+                }`}
+              >
+                Kas Aktif
+              </span>
             </div>
 
-            {/* Recharts Bar Chart: Pinned Tooltip at y: 0 so it NEVER blocks the bars */}
-            <div className="h-64 sm:h-72 w-full pt-1 relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
-                  barGap={6}
-                  onMouseMove={(state: any) => {
-                    if (state && state.activePayload && state.activePayload.length) {
-                      setActiveHoverData(state.activePayload[0].payload);
-                    }
-                  }}
-                  onMouseLeave={() => setActiveHoverData(null)}
+            {/* Giant Balance Amount */}
+            <div className="relative z-10 mt-3">
+              <div className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono">
+                {showBalance ? formatRupiah(totalStoreBalance) : 'Rp •••••••••'}
+              </div>
+              <p
+                className={`text-xs mt-2 font-medium ${
+                  isDark ? 'text-[#FCF1D0]/85' : 'text-white/85'
+                }`}
+              >
+                <span
+                  className={`font-bold ${
+                    isDark ? 'text-[#6EE7B7]' : 'text-emerald-300'
+                  }`}
                 >
-                  <XAxis
-                    dataKey="day"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={{ stroke: '#f1f5f9' }}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={10}
-                    tickFormatter={(v) =>
-                      v === 0
-                        ? '0'
-                        : v >= 1000000
-                        ? `${(v / 1000000).toFixed(1)}jt`
-                        : v >= 1000
-                        ? `${Math.round(v / 1000)}k`
-                        : `${v}`
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
-                    position={{ y: 0 }}
-                    content={<CustomBarTooltip />}
-                  />
-                  <Bar
-                    dataKey="masuk"
-                    fill="#10b981"
-                    radius={[8, 8, 0, 0]}
-                    barSize={chartRange === '7d' ? 22 : 9}
-                    background={{ fill: '#f8fafc', radius: 8 }}
-                  />
-                  <Bar
-                    dataKey="keluar"
-                    fill="#ef4444"
-                    radius={[8, 8, 0, 0]}
-                    barSize={chartRange === '7d' ? 22 : 9}
-                    background={{ fill: '#f8fafc', radius: 8 }}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+                  {monthlyGrowthPercent >= 0
+                    ? `+${monthlyGrowthPercent}%`
+                    : `${monthlyGrowthPercent}%`}
+                  .
+                </span>{' '}
+                Performa arus kas bulan ini tercatat otomatis.
+              </p>
             </div>
           </div>
 
-          {/* 4 Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Card 1: Pemasukan Hari Ini */}
-            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Pemasukan Hari Ini</span>
+          {/* RECENT TRANSACTION CARD */}
+          <div
+            className={`border rounded-[32px] p-5 shadow-xs space-y-4 transition-colors ${
+              isDark
+                ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                : 'bg-white border-slate-200/80 text-slate-900'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Recent transaction</h3>
+              <button
+                type="button"
+                onClick={() => setActiveTab('cash')}
+                className="text-xs text-slate-400 hover:text-slate-900 underline underline-offset-4 font-medium cursor-pointer"
+              >
+                View All
+              </button>
+            </div>
+
+            {/* Timeframe Filter Pills: All | Today | 1 Month | 2 Month */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'today', label: 'Today' },
+                { id: '1m', label: '1 Month' },
+                { id: '2m', label: '2 Month' },
+              ].map((pill) => {
+                const isActive = trxRangeFilter === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setTrxRangeFilter(pill.id as any)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      isActive
+                        ? isDark
+                          ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                          : 'bg-[#18181B] text-white shadow-xs'
+                        : isDark
+                        ? 'bg-[#172A57] text-[#FCF1D0]/80 hover:text-[#FCF1D0]'
+                        : 'bg-slate-100 text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Transaction Rows */}
+            {filteredRecentTransactions.length === 0 ? (
+              <div
+                className={`p-6 rounded-3xl border text-center text-xs space-y-1.5 ${
+                  isDark
+                    ? 'bg-[#172A57] border-[#345294] text-[#FCF1D0]/80'
+                    : 'bg-slate-50 border-slate-100 text-slate-400'
+                }`}
+              >
+                <div className="font-bold text-slate-700">Belum Ada Transaksi</div>
+                <p className="text-[11px]">
+                  Klik tombol <strong>+ Add Transaction</strong> untuk mulai mencatat kas toko.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {filteredRecentTransactions.map((trx) => (
+                  <div
+                    key={trx.id}
+                    onClick={() => setActiveTab('cash')}
+                    className={`p-3 rounded-[22px] border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                      isDark
+                        ? 'bg-[#172A57] hover:bg-[#1E356B] border-[#345294]'
+                        : 'bg-slate-50/80 hover:bg-slate-100/90 border-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-full border flex items-center justify-center text-lg shrink-0 shadow-2xs ${
+                          isDark
+                            ? 'bg-[#22396F] border-[#345294]'
+                            : 'bg-white border-slate-200/70'
+                        }`}
+                      >
+                        {getCategoryEmoji(trx.category)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">
+                          {trx.description}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {trx.category} • {formatDateIndo(trx.date)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div
+                        className={`text-xs font-extrabold font-mono ${
+                          trx.type === 'income'
+                            ? isDark
+                              ? 'text-[#6EE7B7]'
+                              : 'text-emerald-600'
+                            : isDark
+                            ? 'text-[#FDA4AF]'
+                            : 'text-rose-500'
+                        }`}
+                      >
+                        {trx.type === 'income'
+                          ? `+${formatRupiah(trx.amount)}`
+                          : `-${formatRupiah(trx.amount)}`}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Full-width "See all transaction" pill button */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('cash')}
+              className={`w-full py-3 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                isDark
+                  ? 'bg-[#172A57] hover:bg-[#2B4684] text-[#FCF1D0] border border-[#345294]'
+                  : 'bg-slate-100 hover:bg-slate-200/80 text-slate-800'
+              }`}
+            >
+              See all transaction
+            </button>
+          </div>
+
+          {/* DAILY INCOME & DAILY EXPENSE SIDE-BY-SIDE CARDS (Moved Below Recent Transaction) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Daily Income Card */}
+            <div
+              className={`border rounded-[28px] p-5 space-y-2 shadow-2xs transition-colors ${
+                isDark
+                  ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                  : 'bg-white border-slate-200/80 text-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400">Daily Income</span>
                 <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl font-bold text-slate-900 tracking-tight font-mono">
-                {formatRupiah(todayIncome)}
-              </div>
-              <div
-                className={`text-[11px] font-medium flex items-center gap-1 ${
-                  todayIncome > 0 ? 'text-emerald-600' : 'text-slate-400'
-                }`}
-              >
-                <span>
-                  {todayIncome > 0 ? 'Tercatat masuk hari ini' : 'Belum ada pemasukan hari ini'}
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span
+                  className={`text-2xl font-extrabold font-mono tracking-tight ${
+                    isDark ? 'text-[#6EE7B7]' : 'text-emerald-600'
+                  }`}
+                >
+                  {formatRupiah(todayIncome)}
                 </span>
               </div>
+              <p className="text-[11px] text-slate-400">
+                Pemasukan kasir tercatat hari ini
+              </p>
             </div>
 
-            {/* Card 2: Pengeluaran Hari Ini */}
-            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Pengeluaran Hari Ini</span>
+            {/* Daily Expense Card */}
+            <div
+              className={`border rounded-[28px] p-5 space-y-2 shadow-2xs transition-colors ${
+                isDark
+                  ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                  : 'bg-white border-slate-200/80 text-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400">Daily Expense</span>
                 <div className="w-7 h-7 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
                   <TrendingDown className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="text-xl font-bold text-slate-900 tracking-tight font-mono">
-                {formatRupiah(todayExpense)}
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span
+                  className={`text-2xl font-extrabold font-mono tracking-tight ${
+                    isDark ? 'text-[#FDA4AF]' : 'text-rose-500'
+                  }`}
+                >
+                  {formatRupiah(todayExpense)}
+                </span>
               </div>
-              <div className="text-[11px] text-slate-400">
-                {todayExpense > 0 ? 'Belanja bahan & operasional' : 'Belum ada pengeluaran'}
+              <p className="text-[11px] text-slate-400">
+                Belanja bahan baku & operasional hari ini
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ====================================================================
+            RIGHT / ANALYTICS COLUMN (7 Cols on Desktop):
+            - Statistic & Report This Month Card
+            - Antrean Peringatan Prioritas (FEFO & Stok Kritis)
+            - Alokasi & Struktur Biaya Toko
+           ==================================================================== */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* STATISTIC & REPORT THIS MONTH CARD */}
+          <div
+            className={`border rounded-[32px] p-6 shadow-xs space-y-5 transition-colors ${
+              isDark
+                ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                : 'bg-white border-slate-200/80 text-slate-900'
+            }`}
+          >
+            {/* Header Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Statistic & Report this month
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Visualisasi arus kas masuk dan keluar secara real-time
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Switch between Pill Bar vs Line Chart */}
+                <div className="inline-flex items-center p-1 rounded-full bg-slate-100 border border-slate-200/60 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setChartVisualMode('pill')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer ${
+                      chartVisualMode === 'pill'
+                        ? isDark
+                          ? 'bg-[#FCF1D0] text-[#0D1C42]'
+                          : 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-500'
+                    }`}
+                    title="Pill Bar Chart"
+                  >
+                    <BarChart2 className="w-3.5 h-3.5" />
+                    <span>Pill Bar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChartVisualMode('line')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer ${
+                      chartVisualMode === 'line'
+                        ? isDark
+                          ? 'bg-[#FCF1D0] text-[#0D1C42]'
+                          : 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-500'
+                    }`}
+                    title="Report Trend Line Chart"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Trend Line</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('analytics')}
+                  className={`text-xs font-bold underline underline-offset-4 cursor-pointer ${
+                    isDark
+                      ? 'text-[#FCF1D0] hover:opacity-80'
+                      : 'text-indigo-600 hover:text-indigo-700'
+                  }`}
+                >
+                  See details
+                </button>
               </div>
             </div>
 
-            {/* Card 3: Estimasi Laba Bersih */}
-            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs">
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Estimasi Laba Bersih</span>
-                <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                  <DollarSign className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div
-                className={`text-xl font-bold tracking-tight font-mono ${
-                  todayProfit >= 0 ? 'text-slate-900' : 'text-rose-600'
-                }`}
-              >
-                {formatRupiah(todayProfit)}
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Margin:{' '}
-                <span className="text-slate-900 font-semibold">
-                  {todayIncome > 0 ? Math.round((todayProfit / todayIncome) * 100) : 0}%
-                </span>
-              </div>
+            {/* Timeframe Selector Bar: Daily | Weekly | Monthly | Annual */}
+            <div className="grid grid-cols-4 p-1.5 rounded-full bg-slate-100 border border-slate-200/70 text-xs font-bold">
+              {[
+                { id: 'daily', label: 'Daily' },
+                { id: 'weekly', label: 'Weekly' },
+                { id: 'monthly', label: 'Monthly' },
+                { id: 'annual', label: 'Annual' },
+              ].map((tf) => {
+                const isActive = timeframe === tf.id;
+                return (
+                  <button
+                    key={tf.id}
+                    type="button"
+                    onClick={() => setTimeframe(tf.id as any)}
+                    className={`py-2 rounded-full transition-all cursor-pointer ${
+                      isActive
+                        ? isDark
+                          ? 'bg-[#FCF1D0] text-[#0D1C42] font-extrabold shadow-sm'
+                          : 'bg-[#18181B] text-white font-extrabold shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Card 4: Target Bulanan */}
-            <div
-              onClick={() => setActiveTab('settings')}
-              className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs cursor-pointer"
-              title="Klik untuk mengatur target bulanan toko"
-            >
-              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-                <span>Target Bulanan</span>
-                <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <Target className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="flex items-baseline justify-between font-mono gap-1">
-                <span className="text-xl font-bold text-slate-900 tracking-tight">
-                  {targetPercent}%
-                </span>
-                <span className="text-[10px] text-slate-500 truncate">
-                  {monthlyTarget > 0 ? `Target: ${formatRupiah(monthlyTarget)}` : 'Target: Rp 0'}
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-lime-500 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${targetPercent}%` }}
-                />
-              </div>
+            {/* Report Sub-Filter Tabs: All | Spent | Income */}
+            <div className="grid grid-cols-3 p-1 rounded-full bg-slate-100/80 border border-slate-200/50 text-xs font-semibold">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'spent', label: 'Spent' },
+                { id: 'income', label: 'Income' },
+              ].map((tab) => {
+                const isActive = reportFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setReportFilter(tab.id as any)}
+                    className={`py-1.5 rounded-full transition-all cursor-pointer ${
+                      isActive
+                        ? isDark
+                          ? 'bg-[#22396F] text-[#FCF1D0] font-bold shadow-2xs border border-[#345294]'
+                          : 'bg-white text-slate-900 font-bold shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Chart Viewport */}
+            <div className="h-64 w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                {chartVisualMode === 'pill' ? (
+                  <BarChart data={chartData} barCategoryGap="22%">
+                    <XAxis
+                      dataKey="label"
+                      stroke={isDark ? '#B8C4E0' : '#94a3b8'}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      orientation="right"
+                      stroke={isDark ? '#B8C4E0' : '#94a3b8'}
+                      fontSize={10}
+                      tickFormatter={(v) =>
+                        v === 0
+                          ? '0'
+                          : v >= 1000000
+                          ? `${(v / 1000000).toFixed(1)}M`
+                          : v >= 1000
+                          ? `${Math.round(v / 1000)}K`
+                          : `${v}`
+                      }
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'transparent' }}
+                      content={<CustomChartTooltip />}
+                    />
+                    <Bar
+                      dataKey="total"
+                      radius={[999, 999, 999, 999]}
+                      barSize={32}
+                      background={{
+                        fill: isDark ? '#172A57' : '#F1F5F9',
+                        radius: 999,
+                      }}
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            entry.isHighlight
+                              ? isDark
+                                ? '#FCF1D0'
+                                : '#311068'
+                              : isDark
+                              ? '#4A6BB5'
+                              : '#6366F1'
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                ) : (
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="spentGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.22} />
+                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke={isDark ? '#345294' : '#F1F5F9'}
+                    />
+                    <XAxis
+                      dataKey="label"
+                      stroke={isDark ? '#B8C4E0' : '#94a3b8'}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      orientation="right"
+                      stroke={isDark ? '#B8C4E0' : '#94a3b8'}
+                      fontSize={10}
+                      tickFormatter={(v) =>
+                        v === 0
+                          ? '0'
+                          : v >= 1000000
+                          ? `${(v / 1000000).toFixed(1)}M`
+                          : v >= 1000
+                          ? `${Math.round(v / 1000)}K`
+                          : `${v}`
+                      }
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip content={<CustomChartTooltip />} />
+                    {(reportFilter === 'all' || reportFilter === 'income') && (
+                      <Area
+                        type="monotone"
+                        dataKey="masuk"
+                        stroke="#10B981"
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill="url(#incomeGrad)"
+                      />
+                    )}
+                    {(reportFilter === 'all' || reportFilter === 'spent') && (
+                      <Area
+                        type="monotone"
+                        dataKey="keluar"
+                        stroke="#EF4444"
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill="url(#spentGrad)"
+                      />
+                    )}
+                  </AreaChart>
+                )}
+              </ResponsiveContainer>
             </div>
           </div>
 
-          {/* ANTREAN PERINGATAN PRIORITAS - DIRECTLY UNDERNEATH STATISTICS */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
+          {/* ANTREAN PERINGATAN PRIORITAS (FEFO & STOK KRITIS) */}
+          <div
+            className={`border rounded-[32px] p-6 shadow-xs space-y-4 transition-colors ${
+              isDark
+                ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                : 'bg-white border-slate-200/80 text-slate-900'
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -526,14 +1007,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </h3>
               </div>
 
-              {allAlerts.length > 5 && (
+              {allAlerts.length > 4 && (
                 <button
                   type="button"
                   onClick={() => setIsAlertsExpanded(!isAlertsExpanded)}
                   className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
                 >
                   <span>
-                    {isAlertsExpanded ? 'Tampilkan Lebih Sedikit' : `Lihat Semua (${allAlerts.length})`}
+                    {isAlertsExpanded
+                      ? 'Tampilkan Lebih Sedikit'
+                      : `Lihat Semua (${allAlerts.length})`}
                   </span>
                   {isAlertsExpanded ? (
                     <ChevronUp className="w-3.5 h-3.5" />
@@ -577,163 +1060,86 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                   </div>
 
-                  <span className="text-[11px] font-semibold text-slate-500 group-hover:text-slate-900 hidden sm:inline-block">
-                    Buka di Gudang →
+                  <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
+                    Gudang →
                   </span>
                 </div>
               ))}
 
               {allAlerts.length === 0 && (
-                <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500 space-y-1">
+                <div
+                  className={`p-5 rounded-2xl border text-center text-xs space-y-1 ${
+                    isDark
+                      ? 'bg-[#172A57] border-[#345294] text-[#FCF1D0]/80'
+                      : 'bg-slate-50 border-slate-200 text-slate-500'
+                  }`}
+                >
                   <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto" />
-                  <div className="font-semibold text-slate-900">Belum Ada Peringatan (0)</div>
+                  <div className="font-semibold text-slate-900">Semua Stok Gudang Aman (0 Peringatan)</div>
                   <p>Tidak ada barang yang kritis atau mendekati tanggal kedaluwarsa.</p>
                 </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* RIGHT COLUMN (4 Cols): Saldo Tersedia, Quick Actions, and Riwayat Transaksi */}
-        <div className="lg:col-span-4 space-y-6">
-          {/* Card: Saldo Tersedia */}
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-md text-white space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-slate-400" />
-                <span className="text-xs font-semibold text-slate-400">Kas Usaha Toko</span>
+          {/* ALOKASI & STRUKTUR BIAYA TOKO */}
+          <div
+            className={`border rounded-[32px] p-6 shadow-xs space-y-4 transition-colors ${
+              isDark
+                ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
+                : 'bg-white border-slate-200/80 text-slate-900'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <PieChart className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-bold text-slate-900">Alokasi & Struktur Biaya Toko</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Rincian proporsi pengeluaran berdasarkan kategori transaksi keluar
+                </p>
               </div>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
 
-            <div className="space-y-1 pt-1">
-              <span className="text-xs text-slate-400 font-mono">Saldo Tersedia</span>
-              <div className="text-3xl font-extrabold font-mono tracking-tight text-white">
-                {formatRupiah(totalStoreBalance)}
+              <div className="text-right">
+                <span className="text-[11px] text-slate-500 block">Total Pengeluaran</span>
+                <span className="text-lg font-extrabold font-mono text-slate-900">
+                  {formatRupiah(costAnalysis.total)}
+                </span>
               </div>
             </div>
-          </div>
 
-          {/* Quick Actions (4 Buttons) */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3">
-            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider block">
-              Aksi Cepat Kasir & Gudang
-            </span>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={onOpenVoice}
-                className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                  <Mic className="w-3.5 h-3.5" />
-                </div>
-                <span>Bicara</span>
-              </button>
-
-              <button
-                onClick={onOpenScan}
-                className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                  <ScanLine className="w-3.5 h-3.5" />
-                </div>
-                <span>Scan Nota</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('cash')}
-                className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                </div>
-                <span>Catat Kas</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('storage')}
-                className="flex items-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                  <Package className="w-3.5 h-3.5" />
-                </div>
-                <span>Gudang</span>
-              </button>
-
-              {onOpenCalculator && (
-                <button
-                  onClick={onOpenCalculator}
-                  className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                    <Calculator className="w-3.5 h-3.5" />
-                  </div>
-                  <span>Buka Kalkulator Cepat</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Riwayat Kasir Terkini */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">
-                Riwayat Kasir Terkini ({transactions.length})
-              </span>
-              <button
-                onClick={() => setActiveTab('cash')}
-                className="text-[11px] text-slate-500 hover:text-slate-900 font-semibold transition-colors cursor-pointer"
-              >
-                Lihat Semua
-              </button>
+            <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-100 p-0.5 gap-1">
+              {costAnalysis.items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`${item.color} h-full rounded-full transition-all duration-500`}
+                  style={{ width: `${Math.max(3, item.percent)}%` }}
+                  title={`${item.label}: ${formatRupiah(item.amount)} (${item.percent}%)`}
+                />
+              ))}
             </div>
 
-            {transactions.length === 0 ? (
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 text-center text-xs text-slate-400 space-y-1">
-                <div className="font-semibold text-slate-600">Belum Ada Riwayat Kasir (0)</div>
-                <p className="text-[11px]">Transaksi masuk & keluar akan tampil di sini.</p>
+            {costAnalysis.items.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/70 text-center text-xs text-slate-500">
+                Belum ada pengeluaran tercatat (<span className="font-mono font-semibold">Rp 0</span>).
               </div>
             ) : (
-              <div className="space-y-2">
-                {transactions.slice(0, 5).map((trx) => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                {costAnalysis.items.map((item, idx) => (
                   <div
-                    key={trx.id}
-                    onClick={() => setActiveTab('cash')}
-                    className="p-2.5 rounded-2xl bg-slate-50/70 hover:bg-slate-100/80 border border-slate-100 flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                    key={idx}
+                    className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-1"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                          trx.type === 'income'
-                            ? 'bg-emerald-50 text-emerald-600'
-                            : 'bg-rose-50 text-rose-600'
-                        }`}
-                      >
-                        {trx.type === 'income' ? (
-                          <TrendingUp className="w-3.5 h-3.5" />
-                        ) : (
-                          <TrendingDown className="w-3.5 h-3.5" />
-                        )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className={`w-2 h-2 rounded-full ${item.color} shrink-0`} />
+                        <span className="text-xs font-bold text-slate-900 truncate">{item.label}</span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-slate-900 truncate">
-                          {trx.description}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-mono truncate">
-                          {trx.date} • {trx.category}
-                        </div>
-                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-900">{item.percent}%</span>
                     </div>
-
-                    <div
-                      className={`text-xs font-bold font-mono shrink-0 ${
-                        trx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
-                    >
-                      {trx.type === 'income'
-                        ? `+${formatRupiah(trx.amount)}`
-                        : `-${formatRupiah(trx.amount)}`}
+                    <div className="text-xs font-mono font-semibold text-slate-600">
+                      {formatRupiah(item.amount)}
                     </div>
                   </div>
                 ))}
@@ -741,69 +1147,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
         </div>
-      </div>
-
-      {/* 3. FULL-WIDTH EXPANDED CARD: ALOKASI BIAYA TOKO */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <PieChart className="w-4 h-4 text-amber-500" />
-              <h3 className="text-sm font-bold text-slate-900">Alokasi & Struktur Biaya Toko</h3>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Rincian proporsi pengeluaran berdasarkan kategori transaksi keluar toko
-            </p>
-          </div>
-
-          <div className="text-right">
-            <span className="text-[11px] text-slate-500 block">Total Pengeluaran Kasir & Toko</span>
-            <span className="text-xl font-extrabold font-mono text-slate-900">
-              {formatRupiah(costAnalysis.total)}
-            </span>
-          </div>
-        </div>
-
-        {/* Segmented Multi-Color Bar (0% empty neutral bar when total === 0) */}
-        <div className="space-y-2">
-          <div className="w-full h-4 rounded-full overflow-hidden flex bg-slate-100 p-0.5 gap-1 shadow-inner">
-            {costAnalysis.items.map((item, idx) => (
-              <div
-                key={idx}
-                className={`${item.color} h-full rounded-full transition-all duration-500`}
-                style={{ width: `${Math.max(3, item.percent)}%` }}
-                title={`${item.label}: ${formatRupiah(item.amount)} (${item.percent}%)`}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Detailed Breakdown Grid or Clean Zero State */}
-        {costAnalysis.items.length === 0 ? (
-          <div className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/70 text-center text-xs text-slate-500">
-            Belum ada pengeluaran tercatat (<span className="font-mono font-semibold text-slate-700">Rp 0</span>). Struktur alokasi biaya otomatis terisi saat Anda mencatat transaksi pengeluaran.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
-            {costAnalysis.items.map((item, idx) => (
-              <div
-                key={idx}
-                className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-1.5"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className={`w-2.5 h-2.5 rounded-full ${item.color} shrink-0`} />
-                    <span className="text-xs font-bold text-slate-900 truncate">{item.label}</span>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-slate-900">{item.percent}%</span>
-                </div>
-                <div className="text-xs font-mono font-semibold text-slate-600">
-                  {formatRupiah(item.amount)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

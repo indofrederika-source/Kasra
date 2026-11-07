@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
 import { Product } from '@/types';
 import { formatRupiah, formatDateIndo, formatThousands, parseThousands } from '@/lib/utils';
@@ -8,6 +8,7 @@ import {
   parseProductInfoEditVoice,
   ProductVoiceEditPatch,
 } from '@/lib/ai/parser';
+import { useKasraVoiceRecognition } from '@/lib/ai/voiceRecognition';
 import { VoiceMicOrb } from '@/components/ui/VoiceMicVisuals';
 import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
 import { CustomDropdown } from '@/components/ui/CustomDropdown';
@@ -50,13 +51,22 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
 }) => {
   const { products, updateProduct } = useKasra();
 
-  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string>(initialProduct?.id || '');
   const [editablePatch, setEditablePatch] = useState<ProductVoiceEditPatch>({});
 
-  const recognitionRef = useRef<any>(null);
-  const isRecordingRef = useRef(false);
+  const {
+    isRecording,
+    isProcessingSpeech,
+    audioLevel,
+    audioBands,
+    statusHint,
+    toggleRecording,
+    stopRecording,
+  } = useKasraVoiceRecognition({
+    isOpen,
+    onTranscriptChange: setTranscript,
+  });
 
   // Sync initial product on open
   useEffect(() => {
@@ -64,69 +74,8 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
       setTranscript('');
       setEditablePatch({});
       setSelectedProductId(initialProduct?.id || products[0]?.id || '');
-    } else {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
     }
   }, [isOpen, initialProduct?.id]);
-
-  // Setup Web Speech API
-  useEffect(() => {
-    if (!isOpen || typeof window === 'undefined') return;
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'id-ID';
-
-      recognition.onresult = (event: any) => {
-        let spoken = '';
-        for (let i = 0; i < event.results.length; i++) {
-          spoken += event.results[i][0].transcript;
-        }
-        setTranscript(spoken);
-      };
-
-      recognition.onend = () => {
-        if (isRecordingRef.current) {
-          try {
-            recognition.start();
-          } catch {
-            isRecordingRef.current = false;
-            setIsRecording(false);
-          }
-        }
-      };
-
-      recognition.onerror = (e: any) => {
-        if (e.error === 'no-speech') return;
-        if (e.error !== 'network') {
-          isRecordingRef.current = false;
-          setIsRecording(false);
-        }
-      };
-
-      recognitionRef.current = recognition;
-    }
-
-    return () => {
-      isRecordingRef.current = false;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-    };
-  }, [isOpen]);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === selectedProductId) || null,
@@ -157,30 +106,6 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
     const finalParsed = parseProductInfoEditVoice(transcript, products, targetForCalc);
     setEditablePatch(finalParsed.changes);
   }, [transcript, products, initialProduct, selectedProduct?.id]);
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-    } else {
-      setTranscript('');
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch {
-          isRecordingRef.current = false;
-          setIsRecording(false);
-        }
-      }
-    }
-  };
 
   const productOptions = useMemo(
     () =>
@@ -246,13 +171,7 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
   const handleApplyChanges = () => {
     if (!selectedProduct || patchEntries.length === 0) return;
 
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-    }
+    stopRecording();
 
     updateProduct(selectedProduct.id, editablePatch);
     if (onAppliedPatch) {
@@ -330,9 +249,12 @@ export const ProductVoiceEditModal: React.FC<ProductVoiceEditModalProps> = ({
                   isRecording={isRecording}
                   onToggle={toggleRecording}
                   transcript={transcript}
+                  audioLevel={audioLevel}
+                  audioBands={audioBands}
+                  isProcessingSpeech={isProcessingSpeech}
                   accent="indigo"
-                  idleHint="Klik mikrofon lalu ucapkan perubahan informasi barang:"
-                  listeningHint="Ucapkan perubahan harga, kadaluarsa, lokasi, atau info lainnya..."
+                  idleHint={statusHint || 'Klik mikrofon lalu ucapkan perubahan informasi barang:'}
+                  listeningHint={statusHint || 'Ucapkan perubahan harga, kadaluarsa, lokasi, atau info lainnya...'}
                 />
               </div>
 

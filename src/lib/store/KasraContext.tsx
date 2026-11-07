@@ -75,6 +75,10 @@ interface KasraContextType {
   criticalStockCount: number;
   nearExpiryCount: number;
   totalAssetValue: number;
+  // Theme (Option 1: Dark BankSi UI, Option 2: Light Indigo Fintech UI)
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+  setTheme: (theme: 'dark' | 'light') => void;
 }
 
 const KasraContext = createContext<KasraContextType | undefined>(undefined);
@@ -110,8 +114,36 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
   const [activeDraft, setActiveDraft] = useState<ConfirmationDraft | null>(null);
   const [todayIso, setTodayIso] = useState<string>(() => getLocalTodayIso());
+  const [theme, setThemeState] = useState<'dark' | 'light'>('light');
   const hydratedUidRef = useRef<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+
+  // Hydrate theme preference from localStorage
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('kasra_ui_theme') as 'dark' | 'light' | null;
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        setThemeState(savedTheme);
+        document.documentElement.classList.toggle('dark-theme', savedTheme === 'dark');
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setTheme = (nextTheme: 'dark' | 'light') => {
+    setThemeState(nextTheme);
+    try {
+      localStorage.setItem('kasra_ui_theme', nextTheme);
+      document.documentElement.classList.toggle('dark-theme', nextTheme === 'dark');
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
 
   // Hydrate per-user clean workspace from localStorage on mount / user change
   useEffect(() => {
@@ -992,6 +1024,9 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         criticalStockCount,
         nearExpiryCount,
         totalAssetValue,
+        theme,
+        toggleTheme,
+        setTheme,
       }}
     >
       {children}

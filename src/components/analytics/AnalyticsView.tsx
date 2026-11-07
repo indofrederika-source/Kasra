@@ -455,9 +455,9 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => exportToOfficialPdf(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4 text-[#0D1C42]" />
             <span>Cetak PDF Resmi Bank (KUR)</span>
           </button>
         </div>
@@ -469,9 +469,9 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setViewSegment('chart')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               viewSegment === 'chart'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -482,9 +482,9 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setViewSegment('report')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               viewSegment === 'report'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -495,9 +495,9 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setViewSegment('table')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
+            className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               viewSegment === 'table'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -523,9 +523,9 @@ export const AnalyticsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setChartType('bar')}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'bar'
-                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -536,9 +536,9 @@ export const AnalyticsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setChartType('area')}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'area'
-                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -549,9 +549,9 @@ export const AnalyticsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setChartType('donut')}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'donut'
-                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -562,9 +562,9 @@ export const AnalyticsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setChartType('composed')}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'composed'
-                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -589,9 +589,9 @@ export const AnalyticsView: React.FC = () => {
                     key={tf}
                     type="button"
                     onClick={() => setChartTimeframe(tf)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                       chartTimeframe === tf
-                        ? 'bg-lime-500 text-slate-950 font-bold shadow-xs'
+                        ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                     }`}
                   >
@@ -966,9 +966,9 @@ export const AnalyticsView: React.FC = () => {
             <button
               type="button"
               onClick={() => exportToOfficialPdf(profile, transactions, products)}
-              className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
+              className="px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 text-[#0D1C42]" />
               <span>Unduh PDF</span>
             </button>
           </div>
@@ -1048,9 +1048,9 @@ export const AnalyticsView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => exportToExcel(profile, transactions, products)}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold shadow-sm cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 text-[#0D1C42]" />
                 <span>Simpan Excel</span>
               </button>
             </div>

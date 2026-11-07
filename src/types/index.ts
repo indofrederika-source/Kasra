@@ -57,6 +57,7 @@ export interface Transaction {
   description: string;
   date: string; // YYYY-MM-DD
   inputMethod: InputMethod;
+  account?: string; // e.g. 'BCA', 'Wise', 'QRIS', 'Mandiri', 'Tunai'
   receiptUrl?: string;
   relatedProductId?: string;
   relatedQuantity?: number;

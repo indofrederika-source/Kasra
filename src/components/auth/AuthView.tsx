@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Lock,
   Mail,
@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   KeyRound,
   Info,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { validatePasswordStrength } from '@/lib/auth/crypto';
@@ -48,6 +50,28 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('kasra_ui_theme');
+      const darkActive = saved === 'dark';
+      setIsDark(darkActive);
+      document.documentElement.classList.toggle('dark-theme', darkActive);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleToggleTheme = (nextDark: boolean) => {
+    setIsDark(nextDark);
+    try {
+      localStorage.setItem('kasra_ui_theme', nextDark ? 'dark' : 'light');
+      document.documentElement.classList.toggle('dark-theme', nextDark);
+    } catch {
+      // ignore
+    }
+  };
 
   // Password strength calculation
   const pwdStrength = validatePasswordStrength(regPassword);
@@ -135,11 +159,54 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
         <div className="w-[450px] h-[450px] bg-slate-200/50 rounded-full blur-3xl translate-y-32 -translate-x-32" />
       </div>
 
+      {/* Top-Right Theme Switcher (Dark UI Option 1 / Light UI Option 2) */}
+      <div className="fixed top-5 right-5 z-30">
+        <div
+          className={`inline-flex items-center p-1 rounded-full border shadow-md text-xs font-bold ${
+            isDark
+              ? 'bg-[#22396F] border-[#345294]'
+              : 'bg-white border-slate-200'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => handleToggleTheme(true)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              isDark
+                ? 'bg-[#FCF1D0] text-[#0D1C42] font-extrabold'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5" />
+            <span>Dark UI</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleTheme(false)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all cursor-pointer ${
+              !isDark
+                ? 'bg-[#311068] text-white font-extrabold'
+                : 'text-[#FCF1D0]/75 hover:text-[#FCF1D0]'
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5" />
+            <span>Light UI</span>
+          </button>
+        </div>
+      </div>
+
       <div className="relative w-full max-w-[460px] z-10">
+        <div>
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-md mb-3 ring-4 ring-slate-100">
-            <KasraLogo className="w-8 h-8 text-white" />
+          <div
+            className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md mb-3 ${
+              isDark
+                ? 'bg-[#22396F] border border-[#345294] text-[#FCF1D0]'
+                : 'bg-gradient-to-br from-[#1E1B4B] to-[#4C1D95] text-white'
+            }`}
+          >
+            <KasraLogo className={`w-8 h-8 ${isDark ? 'text-[#FCF1D0]' : 'text-white'}`} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             KASRA Workspace
@@ -506,6 +573,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
         <p className="text-center text-[11px] text-slate-400 mt-5">
           KASRA &copy; {new Date().getFullYear()} • Sistem Kasir & Inventaris Pintar UMKM
         </p>
+        </div>
       </div>
 
       {/* Forgot Password Modal */}

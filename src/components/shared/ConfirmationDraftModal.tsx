@@ -5,6 +5,7 @@ import { useKasra } from '@/lib/store/KasraContext';
 import { ConfirmationDraft, CashChangeDraft, StockChangeDraft, CategoryChangeDraft } from '@/types';
 import { formatRupiah, formatThousands, parseThousands } from '@/lib/utils';
 import { parseOmniboxInput } from '@/lib/ai/parser';
+import { useKasraVoiceRecognition } from '@/lib/ai/voiceRecognition';
 import { CustomDropdown } from '@/components/ui/CustomDropdown';
 import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
 import { VoiceInlineButton } from '@/components/ui/VoiceMicVisuals';
@@ -77,10 +78,16 @@ export const ConfirmationDraftModal: React.FC<ConfirmationDraftModalProps> = ({ 
   const [saveAfterPrompts, setSaveAfterPrompts] = useState<boolean>(false);
 
   // Inline voice re-record inside Ringkasan editor
-  const [isReRecording, setIsReRecording] = useState<boolean>(false);
-  const recognitionRef = useRef<any>(null);
-  const isReRecordingRef = useRef<boolean>(false);
   const ringkasanInputRef = useRef<HTMLInputElement | null>(null);
+  const {
+    isRecording: isReRecording,
+    audioLevel: reRecordAudioLevel,
+    stopRecording: stopReRecording,
+    toggleRecording: toggleReRecording,
+  } = useKasraVoiceRecognition({
+    isOpen: isEditingRingkasan,
+    onTranscriptChange: setEditedInput,
+  });
 
   const isStockItemUnregistered = (s: StockChangeDraft): boolean => {
     if (s.productId && products.some((p) => p.id === s.productId)) return false;
@@ -120,81 +127,7 @@ export const ConfirmationDraftModal: React.FC<ConfirmationDraftModalProps> = ({ 
       ringkasanInputRef.current.focus();
       ringkasanInputRef.current.select();
     }
-    if (!isEditingRingkasan && isReRecordingRef.current) {
-      stopReRecording();
-    }
   }, [isEditingRingkasan]);
-
-  // Cleanup speech recognition on unmount
-  useEffect(() => {
-    return () => {
-      isReRecordingRef.current = false;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-    };
-  }, []);
-
-  const stopReRecording = () => {
-    isReRecordingRef.current = false;
-    setIsReRecording(false);
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-    }
-  };
-
-  const toggleReRecording = () => {
-    if (isReRecording) {
-      stopReRecording();
-      return;
-    }
-
-    if (typeof window === 'undefined') return;
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'id-ID';
-
-    recognition.onresult = (event: any) => {
-      let spoken = '';
-      for (let i = 0; i < event.results.length; i++) {
-        spoken += event.results[i][0].transcript;
-      }
-      setEditedInput(spoken);
-    };
-
-    recognition.onerror = () => {
-      stopReRecording();
-    };
-
-    recognition.onend = () => {
-      if (isReRecordingRef.current) {
-        try {
-          recognition.start();
-        } catch {
-          stopReRecording();
-        }
-      }
-    };
-
-    recognitionRef.current = recognition;
-    setEditedInput('');
-    isReRecordingRef.current = true;
-    setIsReRecording(true);
-    try {
-      recognition.start();
-    } catch {
-      stopReRecording();
-    }
-  };
 
   const handleReparseRingkasan = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -563,6 +496,7 @@ export const ConfirmationDraftModal: React.FC<ConfirmationDraftModalProps> = ({ 
                     <VoiceInlineButton
                       isRecording={isReRecording}
                       onToggle={toggleReRecording}
+                      audioLevel={reRecordAudioLevel}
                       idleLabel="Bicara"
                       recordingLabel="Mendengarkan"
                     />

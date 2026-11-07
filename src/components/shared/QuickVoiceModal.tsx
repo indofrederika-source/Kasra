@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
 import { parseOmniboxInput, autocorrectIndonesianVoice } from '@/lib/ai/parser';
+import { useKasraVoiceRecognition } from '@/lib/ai/voiceRecognition';
 import { VoiceMicOrb } from '@/components/ui/VoiceMicVisuals';
 import {
   Mic,
@@ -23,10 +24,20 @@ export const QuickVoiceModal: React.FC<QuickVoiceModalProps> = ({
   contextType = 'omni',
 }) => {
   const { products, categoryDefinitions, setActiveDraft } = useKasra();
-  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const recognitionRef = useRef<any>(null);
-  const isRecordingRef = useRef(false);
+
+  const {
+    isRecording,
+    isProcessingSpeech,
+    audioLevel,
+    audioBands,
+    statusHint,
+    toggleRecording,
+    stopRecording,
+  } = useKasraVoiceRecognition({
+    isOpen,
+    onTranscriptChange: setTranscript,
+  });
 
   // Real-time live context and intent detection with autocorrect
   const liveFeedback = useMemo(() => {
@@ -35,97 +46,15 @@ export const QuickVoiceModal: React.FC<QuickVoiceModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
       setTranscript('');
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-      return;
     }
-
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'id-ID';
-
-        recognition.onresult = (event: any) => {
-          let currentText = '';
-          for (let i = 0; i < event.results.length; i++) {
-            currentText += event.results[i][0].transcript;
-          }
-          setTranscript(currentText);
-        };
-
-        recognition.onend = () => {
-          if (isRecordingRef.current) {
-            try {
-              recognition.start();
-            } catch (err) {
-              console.warn('Speech recognition auto-restart:', err);
-            }
-          }
-        };
-
-        recognition.onerror = (e: any) => {
-          if (e.error === 'no-speech') {
-            return;
-          }
-          console.warn('Speech recognition warning:', e.error || e);
-          if (e.error !== 'network') {
-            isRecordingRef.current = false;
-            setIsRecording(false);
-          }
-        };
-
-        recognitionRef.current = recognition;
-      }
-    }
-
-    return () => {
-      isRecordingRef.current = false;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-    };
   }, [isOpen]);
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      isRecordingRef.current = false;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-      setIsRecording(false);
-    } else {
-      setTranscript('');
-      isRecordingRef.current = true;
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (err) {
-          console.warn('Could not start recognition:', err);
-        }
-      }
-      setIsRecording(true);
-    }
-  };
 
   const handleProcessInput = (inputText: string) => {
     const textToProcess = inputText.trim();
     if (!textToProcess) return;
 
+    stopRecording();
     const draft = parseOmniboxInput(textToProcess, products, categoryDefinitions);
     setActiveDraft(draft);
     onClose();
@@ -166,9 +95,12 @@ export const QuickVoiceModal: React.FC<QuickVoiceModalProps> = ({
             isRecording={isRecording}
             onToggle={toggleRecording}
             transcript={transcript}
+            audioLevel={audioLevel}
+            audioBands={audioBands}
+            isProcessingSpeech={isProcessingSpeech}
             accent="emerald"
-            idleHint="Klik tombol mikrofon untuk mulai berbicara, atau ketik perintah di kolom bawah:"
-            listeningHint="Sedang mendengarkan ucapan Anda... Klik mikrofon untuk selesai."
+            idleHint={statusHint || 'Klik tombol mikrofon untuk mulai berbicara, atau ketik perintah di kolom bawah:'}
+            listeningHint={statusHint || 'Sedang mendengarkan ucapan Anda... Klik mikrofon untuk selesai.'}
           />
 
           {/* Transcript Area */}

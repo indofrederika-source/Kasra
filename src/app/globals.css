@@ -2,33 +2,49 @@
 
 @layer base {
   :root {
-    --background: #F8FAFC;
+    --background: #F3F4F8;
     --foreground: #0F172A;
     --sidebar: #FFFFFF;
-    --header: #FFFFFF;
+    --header: rgba(255, 255, 255, 0.85);
     --card: #FFFFFF;
     --card-hover: #F8FAFC;
-    --inner-card: #F1F5F9;
-    --border: #E2E8F0;
+    --inner-card: #F3F4F8;
+    --border: #E6E8F0;
     --border-light: #F1F5F9;
-    --pill-bg: #F1F5F9;
+    --pill-bg: #F3F4F8;
     --pill-border: #E2E8F0;
-    --brand-mark: #84CC16;
+    --brand-mark: #22396F;
     --accent-amber: #F59E0B;
     --accent-green: #10B981;
+  }
+
+  html.dark-theme {
+    --background: #0D1C42;
+    --foreground: #FCF1D0;
+    --sidebar: #22396F;
+    --header: rgba(13, 28, 66, 0.88);
+    --card: #22396F;
+    --card-hover: #294380;
+    --inner-card: #172A57;
+    --border: #345294;
+    --border-light: #2B4580;
+    --pill-bg: #172A57;
+    --pill-border: #345294;
+    --brand-mark: #FCF1D0;
   }
 }
 
 body {
-  background-color: #F8FAFC;
-  color: #0F172A;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  letter-spacing: -0.01em;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.015em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* Custom subtle light scrollbars */
+/* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -43,8 +59,156 @@ body {
   border-radius: 9999px;
 }
 
+html.dark-theme ::-webkit-scrollbar-thumb {
+  background: #345294;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+/* ============================================================================
+   GLOBAL DARK MODE PALETTE OVERRIDES
+   Background      : #0D1C42
+   Text            : #FCF1D0
+   Board / Features: #22396F
+   Soothing companion shades: #172A57 (inner), #345294 (border), #D6C9A8 (muted text)
+   ============================================================================ */
+html.dark-theme body,
+html.dark-theme .bg-\[\#F8FAFC\],
+html.dark-theme .bg-\[\#F3F4F8\] {
+  background-color: #0D1C42 !important;
+  color: #FCF1D0 !important;
+}
+
+html.dark-theme .bg-white {
+  background-color: #22396F !important;
+  color: #FCF1D0;
+}
+
+html.dark-theme .bg-white\/80,
+html.dark-theme .bg-white\/90,
+html.dark-theme .bg-white\/95 {
+  background-color: rgba(34, 57, 111, 0.92) !important;
+  color: #FCF1D0;
+}
+
+html.dark-theme .bg-slate-50,
+html.dark-theme .bg-slate-50\/60,
+html.dark-theme .bg-slate-50\/70,
+html.dark-theme .bg-slate-50\/80 {
+  background-color: #172A57 !important;
+}
+
+html.dark-theme .bg-slate-100,
+html.dark-theme .bg-slate-100\/80,
+html.dark-theme .bg-slate-100\/90 {
+  background-color: #1A2F61 !important;
+}
+
+html.dark-theme .hover\:bg-slate-50:hover,
+html.dark-theme .hover\:bg-slate-50\/80:hover,
+html.dark-theme .hover\:bg-slate-100:hover,
+html.dark-theme .hover\:bg-slate-100\/80:hover,
+html.dark-theme .hover\:bg-slate-100\/90:hover,
+html.dark-theme .hover\:bg-slate-200:hover,
+html.dark-theme .hover\:bg-slate-200\/80:hover {
+  background-color: #2B4684 !important;
+}
+
+html.dark-theme .text-slate-950,
+html.dark-theme .text-slate-900,
+html.dark-theme .text-slate-800 {
+  color: #FCF1D0 !important;
+}
+
+html.dark-theme .text-slate-700,
+html.dark-theme .text-slate-600 {
+  color: #E8DEC0 !important;
+}
+
+html.dark-theme .text-slate-500,
+html.dark-theme .text-slate-400 {
+  color: #B8C4E0 !important;
+}
+
+html.dark-theme .border-slate-200,
+html.dark-theme .border-slate-200\/50,
+html.dark-theme .border-slate-200\/60,
+html.dark-theme .border-slate-200\/70,
+html.dark-theme .border-slate-200\/80,
+html.dark-theme .border-slate-200\/90,
+html.dark-theme .border-slate-300 {
+  border-color: #345294 !important;
+}
+
+html.dark-theme .border-slate-100 {
+  border-color: #2B4580 !important;
+}
+
+html.dark-theme .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark-theme .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2B4580 !important;
+}
+
+/* Soft tinted badges in Dark Mode */
+html.dark-theme .bg-emerald-50,
+html.dark-theme .bg-emerald-50\/70 {
+  background-color: rgba(52, 211, 153, 0.16) !important;
+}
+html.dark-theme .text-emerald-700,
+html.dark-theme .text-emerald-600 {
+  color: #6EE7B7 !important;
+}
+html.dark-theme .border-emerald-200 {
+  border-color: rgba(52, 211, 153, 0.35) !important;
+}
+
+html.dark-theme .bg-rose-50,
+html.dark-theme .bg-rose-50\/70 {
+  background-color: rgba(251, 113, 133, 0.16) !important;
+}
+html.dark-theme .text-rose-700,
+html.dark-theme .text-rose-600,
+html.dark-theme .text-rose-500 {
+  color: #FDA4AF !important;
+}
+html.dark-theme .border-rose-200 {
+  border-color: rgba(251, 113, 133, 0.35) !important;
+}
+
+html.dark-theme .bg-amber-50,
+html.dark-theme .bg-amber-50\/70 {
+  background-color: rgba(252, 241, 208, 0.14) !important;
+}
+html.dark-theme .text-amber-800,
+html.dark-theme .text-amber-700,
+html.dark-theme .text-amber-600 {
+  color: #FCF1D0 !important;
+}
+html.dark-theme .border-amber-200 {
+  border-color: rgba(252, 241, 208, 0.35) !important;
+}
+
+html.dark-theme .bg-sky-50 {
+  background-color: rgba(56, 189, 248, 0.16) !important;
+}
+html.dark-theme .text-sky-700 {
+  color: #7DD3FC !important;
+}
+html.dark-theme .border-sky-200 {
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+html.dark-theme input,
+html.dark-theme textarea,
+html.dark-theme select {
+  color: #FCF1D0;
+}
+
+html.dark-theme input::placeholder,
+html.dark-theme textarea::placeholder {
+  color: #93A6D1 !important;
 }
 
 @keyframes kasra-wave {
@@ -75,4 +239,3 @@ body {
 .animate-kasra-sonar {
   animation: kasra-sonar 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
-
