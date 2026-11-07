@@ -6,6 +6,7 @@ import { Transaction, TransactionType } from '@/types';
 import { formatRupiah, formatDateIndo, parseThousands, formatThousands } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export/exportEngine';
 import { CustomDropdown } from '@/components/ui/CustomDropdown';
+import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import {
   Wallet,
@@ -30,6 +31,14 @@ interface CashViewProps {
   onOpenScan: () => void;
 }
 
+function getLocalTodayIso(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) => {
   const {
     transactions,
@@ -39,6 +48,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
     deleteMultipleTransactions,
     profile,
     products,
+    categoryDefinitions,
     monthIncome,
     monthExpense,
   } = useKasra();
@@ -57,6 +67,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
   const [manualAmount, setManualAmount] = useState('');
   const [manualCategory, setManualCategory] = useState('Penjualan');
   const [manualDesc, setManualDesc] = useState('');
+  const [manualDate, setManualDate] = useState<string>(() => getLocalTodayIso());
   const [manualLinkProduct, setManualLinkProduct] = useState(false);
   const [manualProductId, setManualProductId] = useState('');
   const [manualProductQty, setManualProductQty] = useState('1');
@@ -73,25 +84,36 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
   const [deleteTargetTrx, setDeleteTargetTrx] = useState<Transaction | null>(null);
   const [isMultiDeleteOpen, setIsMultiDeleteOpen] = useState(false);
 
-  // Distinct categories from existing transactions
+  // Distinct categories from existing transactions + master categories
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
-    transactions.forEach((t) => set.add(t.category));
+    transactions.forEach((t) => {
+      if (t.category) set.add(t.category);
+    });
+    categoryDefinitions.forEach((c) => {
+      if (c.name) set.add(c.name);
+    });
     return ['Semua', ...Array.from(set)];
-  }, [transactions]);
+  }, [transactions, categoryDefinitions]);
 
   const categoryOptions = useMemo(() => {
-    const list = [
+    const set = new Set<string>([
       'Penjualan',
       'Bahan Baku',
       'Operasional',
       'Kemasan & Cup',
       'Gaji Karyawan',
       'Listrik & Air',
-      'Lainnya',
-    ];
-    return list.map((c) => ({ value: c, label: c }));
-  }, []);
+    ]);
+    categoryDefinitions.forEach((c) => {
+      if (c.name) set.add(c.name);
+    });
+    transactions.forEach((t) => {
+      if (t.category) set.add(t.category);
+    });
+    set.add('Lainnya');
+    return Array.from(set).map((c) => ({ value: c, label: c }));
+  }, [categoryDefinitions, transactions]);
 
   // Filtered transactions
   const filteredTransactions = useMemo(() => {
@@ -168,7 +190,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
     const qtyNum = manualLinkProduct && manualProductId ? Math.max(1, parseInt(manualProductQty) || 1) : undefined;
 
     addTransaction({
-      date: new Date().toISOString().split('T')[0],
+      date: manualDate || getLocalTodayIso(),
       type: manualType,
       amount: amountNum,
       category: manualCategory,
@@ -180,6 +202,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
 
     setManualAmount('');
     setManualDesc('');
+    setManualDate(getLocalTodayIso());
     setManualLinkProduct(false);
     setManualProductId('');
     setManualProductQty('1');
@@ -222,7 +245,7 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
           >
             <Mic className="w-3.5 h-3.5 text-slate-500" />
-            <span>Bicara Kasir</span>
+            <span>Bicara</span>
           </button>
         </div>
       </div>
@@ -356,8 +379,19 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
             <tbody className="divide-y divide-slate-100">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-400">
-                    Tidak ada transaksi yang cocok dengan kriteria pencarian.
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                    {transactions.length === 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-600">
+                          Buku Kas Masih Kosong (0 Transaksi)
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Klik tombol "+ Catat Transaksi", "Scan Foto Nota", atau "Bicara" untuk mulai mencatat.
+                        </p>
+                      </div>
+                    ) : (
+                      'Tidak ada transaksi yang cocok dengan kriteria pencarian.'
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -614,12 +648,13 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
               {/* Date */}
               <div className="space-y-1">
                 <label className="text-xs text-slate-600 font-semibold">Tanggal Transaksi</label>
-                <input
-                  type="date"
-                  required
+                <AccessibleDatePicker
                   value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
+                  onChange={(val) => setEditDate(val || getLocalTodayIso())}
+                  placeholder="Pilih tanggal transaksi..."
+                  presetMode="transaction"
+                  allowClear={false}
+                  fullWidth
                 />
               </div>
 
@@ -745,57 +780,76 @@ export const CashView: React.FC<CashViewProps> = ({ onOpenVoice, onOpenScan }) =
                 </label>
 
                 {manualLinkProduct && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className="text-[10px] text-slate-500 font-medium">Pilih Barang Gudang</label>
-                      <CustomDropdown
-                        options={products.map((p) => ({
-                          value: p.id,
-                          label: `${p.name} (Sisa ${p.currentStock} ${p.unit})`,
-                        }))}
-                        value={manualProductId}
-                        onChange={(val) => {
-                          setManualProductId(val);
-                          const p = products.find((prod) => prod.id === val);
-                          if (p) {
-                            const qty = parseInt(manualProductQty) || 1;
-                            const price = manualType === 'income' ? p.sellingPrice : p.hppAmount;
-                            setManualAmount(formatThousands(price * qty));
-                            setManualDesc(`${manualType === 'income' ? 'Penjualan' : 'Kulakan'} ${p.name} (${qty} ${p.unit})`);
-                            if (manualType === 'expense' && p.category) {
-                              setManualCategory(p.category);
-                            } else if (manualType === 'income') {
-                              setManualCategory('Penjualan');
+                  products.length === 0 ? (
+                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+                      Gudang masih kosong (0 barang). Tambahkan barang terlebih dahulu di menu <strong>Gudang & Stok</strong> agar dapat dihubungkan otomatis.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-[10px] text-slate-500 font-medium">Pilih Barang Gudang</label>
+                        <CustomDropdown
+                          options={products.map((p) => ({
+                            value: p.id,
+                            label: `${p.name} (Sisa ${p.currentStock} ${p.unit})`,
+                          }))}
+                          value={manualProductId}
+                          onChange={(val) => {
+                            setManualProductId(val);
+                            const p = products.find((prod) => prod.id === val);
+                            if (p) {
+                              const qty = parseInt(manualProductQty) || 1;
+                              const price = manualType === 'income' ? p.sellingPrice : p.hppAmount;
+                              setManualAmount(formatThousands(price * qty));
+                              setManualDesc(`${manualType === 'income' ? 'Penjualan' : 'Kulakan'} ${p.name} (${qty} ${p.unit})`);
+                              if (manualType === 'expense' && p.category) {
+                                setManualCategory(p.category);
+                              } else if (manualType === 'income') {
+                                setManualCategory('Penjualan');
+                              }
                             }
-                          }
-                        }}
-                        className="w-full"
-                        buttonClassName="w-full bg-white py-2 text-xs border-slate-200 text-slate-900"
-                      />
-                    </div>
+                          }}
+                          className="w-full"
+                          buttonClassName="w-full bg-white py-2 text-xs border-slate-200 text-slate-900"
+                        />
+                      </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 font-medium">Jumlah ({products.find(p => p.id === manualProductId)?.unit || 'unit'})</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={manualProductQty}
-                        onChange={(e) => {
-                          const q = e.target.value;
-                          setManualProductQty(q);
-                          const p = products.find((prod) => prod.id === manualProductId);
-                          if (p) {
-                            const qtyNum = parseInt(q) || 1;
-                            const price = manualType === 'income' ? p.sellingPrice : p.hppAmount;
-                            setManualAmount(formatThousands(price * qtyNum));
-                            setManualDesc(`${manualType === 'income' ? 'Penjualan' : 'Kulakan'} ${p.name} (${qtyNum} ${p.unit})`);
-                          }
-                        }}
-                        className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold"
-                      />
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 font-medium">Jumlah ({products.find(p => p.id === manualProductId)?.unit || 'unit'})</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={manualProductQty}
+                          onChange={(e) => {
+                            const q = e.target.value;
+                            setManualProductQty(q);
+                            const p = products.find((prod) => prod.id === manualProductId);
+                            if (p) {
+                              const qtyNum = parseInt(q) || 1;
+                              const price = manualType === 'income' ? p.sellingPrice : p.hppAmount;
+                              setManualAmount(formatThousands(price * qtyNum));
+                              setManualDesc(`${manualType === 'income' ? 'Penjualan' : 'Kulakan'} ${p.name} (${qtyNum} ${p.unit})`);
+                            }
+                          }}
+                          className="w-full bg-white border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
+              </div>
+
+              {/* Tanggal Transaksi */}
+              <div className="space-y-1">
+                <label className="text-xs text-slate-600 font-semibold">Tanggal Transaksi</label>
+                <AccessibleDatePicker
+                  value={manualDate}
+                  onChange={(val) => setManualDate(val || getLocalTodayIso())}
+                  placeholder="Pilih tanggal transaksi..."
+                  presetMode="transaction"
+                  allowClear={false}
+                  fullWidth
+                />
               </div>
 
               {/* Category with Custom Dropdown */}

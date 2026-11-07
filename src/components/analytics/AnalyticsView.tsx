@@ -2,11 +2,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
-import { formatRupiah, formatDateIndo } from '@/lib/utils';
+import { formatRupiah, formatThousands, parseThousands } from '@/lib/utils';
 import { exportToExcel, exportToOfficialPdf } from '@/lib/export/exportEngine';
 import { CustomDropdown } from '@/components/ui/CustomDropdown';
+import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
 import {
-  Activity,
   FileSpreadsheet,
   FileText,
   Download,
@@ -18,7 +18,6 @@ import {
   PieChart as PieChartIcon,
   LineChart as LineChartIcon,
   Layers,
-  ArrowUpRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,13 +33,40 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
 } from 'recharts';
 
-export const AnalyticsView: React.FC = () => {
-  const { profile, transactions, products, stockMovements, monthIncome, monthExpense, totalAssetValue } = useKasra();
+function toLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
-  // Segmented Mode Switch (Foto 2 Style: Chart | Report | Table)
+const formatAxisRupiah = (v: number) => {
+  if (v === 0) return '0';
+  const abs = Math.abs(v);
+  if (abs >= 1000000) {
+    return `${(v / 1000000).toFixed(1).replace(/\.0$/, '')} Jt`;
+  }
+  return `${Math.round(v / 1000)} Rb`;
+};
+
+export const AnalyticsView: React.FC = () => {
+  const {
+    profile,
+    transactions,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    products,
+    stockMovements,
+    categoryDefinitions,
+    monthIncome,
+    monthExpense,
+    totalAssetValue,
+  } = useKasra();
+
+  // Segmented Mode Switch (Chart | Report | Table)
   const [viewSegment, setViewSegment] = useState<'chart' | 'report' | 'table'>('chart');
 
   // Chart Type Switcher (Bar | Area | Donut | Composed)
@@ -59,7 +85,7 @@ export const AnalyticsView: React.FC = () => {
     marginPercent: number;
   }
 
-  // Dynamic Datasets computed from real transactions
+  // Dynamic Datasets computed from real transactions using local timezone dates
   const chartDatasets = useMemo(() => {
     const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     const now = new Date();
@@ -70,7 +96,7 @@ export const AnalyticsView: React.FC = () => {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().split('T')[0];
+      const dStr = toLocalIsoDate(d);
       const isToday = i === 0;
       const label = isToday ? 'Hari Ini' : dayNames[d.getDay()];
 
@@ -97,7 +123,7 @@ export const AnalyticsView: React.FC = () => {
     }
 
     // 2. Week dataset (4 weeks of current month)
-    const currentMonthPrefix = now.toISOString().slice(0, 7);
+    const currentMonthPrefix = toLocalIsoDate(now).slice(0, 7);
     const weekList: ChartItem[] = [];
     let runningSaldoWeek = 0;
     for (let w = 1; w <= 4; w++) {
@@ -196,24 +222,21 @@ export const AnalyticsView: React.FC = () => {
 
   const activeChartData = chartDatasets[chartTimeframe];
 
-  // 3. Operational & Expense Category Allocation (Donut / Pie) computed dynamically
+  // Operational & Expense Category Allocation (Donut / Pie) — empty when 0 expenses
   const categoryDonutData = useMemo(() => {
     const catMap: Record<string, number> = {};
     const colors = ['#84cc16', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899', '#64748b'];
 
     transactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === 'expense' && t.amount > 0)
       .forEach((t) => {
         const cat = t.category || 'Lainnya';
         catMap[cat] = (catMap[cat] || 0) + t.amount;
       });
 
-    const entries = Object.entries(catMap);
+    const entries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
     if (entries.length === 0) {
-      return [
-        { name: 'Bahan Baku & Dapur', value: 1, color: '#84cc16' },
-        { name: 'Operasional', value: 1, color: '#f59e0b' },
-      ];
+      return [];
     }
 
     return entries.map(([name, value], idx) => ({
@@ -230,124 +253,90 @@ export const AnalyticsView: React.FC = () => {
       year: 'numeric',
     })}`
   );
-  const [reportNarrative, setReportNarrative] = useState(
-    `Berdasarkan pencatatan kasra, usaha ${profile.storeName} mencatat arus pendapatan positif pada bulan ini. Efisiensi margin HPP bahan baku terjaga pada level sehat ~35%. Disarankan untuk segera melakukan promo bundling pada produk deadstock guna mencairkan modal yang mengendap.`
-  );
+  const [customNarrative, setCustomNarrative] = useState<string | null>(null);
 
-  // In-App Editable Spreadsheet Rows (TanStack / Table in-app Excel)
-  const [spreadsheetRows, setSpreadsheetRows] = useState([
-    {
-      id: 'row-1',
-      item: 'Kopi Susu Gula Aren 250ml',
-      kategori: 'Penjualan',
-      qty: 120,
-      unit: 'cup',
-      hargaSatuan: 18000,
-      subtotal: 2160000,
-      keterangan: 'Item best-seller kafe',
-    },
-    {
-      id: 'row-2',
-      item: 'Biji Kopi Arabika Gayo 1kg',
-      kategori: 'Bahan Baku',
-      qty: 5,
-      unit: 'pack',
-      hargaSatuan: 145000,
-      subtotal: 725000,
-      keterangan: 'Kulakan bahan baku utama',
-    },
-    {
-      id: 'row-3',
-      item: 'Susu UHT Full Cream 1 Liter',
-      kategori: 'Bahan Baku',
-      qty: 24,
-      unit: 'kotak',
-      hargaSatuan: 17500,
-      subtotal: 420000,
-      keterangan: 'Suplai 2 dus',
-    },
-    {
-      id: 'row-4',
-      item: 'Paper Cup Dingin + Tutup Strawless',
-      kategori: 'Bahan Baku',
-      qty: 150,
-      unit: 'pcs',
-      hargaSatuan: 650,
-      subtotal: 97500,
-      keterangan: 'Kemasan takeaway ramah lingkungan',
-    },
-    {
-      id: 'row-5',
-      item: 'Token Listrik Operasional Barista',
-      kategori: 'Operasional',
-      qty: 1,
-      unit: 'bulan',
-      hargaSatuan: 250000,
-      subtotal: 250000,
-      keterangan: 'Beban tetap operasional',
-    },
-  ]);
+  const autoNarrative = useMemo(() => {
+    const storeLabel = profile.storeName?.trim() || 'Usaha Toko';
+    if (transactions.length === 0 && products.length === 0) {
+      return `Belum ada transaksi maupun stok barang yang tercatat pada ${storeLabel} untuk periode ini (Rp 0). Ringkasan evaluasi akan otomatis diperbarui mengikuti pencatatan Buku Kas dan Gudang, atau dapat Anda sesuaikan langsung di kolom ini.`;
+    }
+    const net = monthIncome - monthExpense;
+    return `Berdasarkan pencatatan aktual ${storeLabel}, total pemasukan bulan ini tercatat sebesar ${formatRupiah(
+      monthIncome
+    )} dengan total pengeluaran sebesar ${formatRupiah(monthExpense)}, menghasilkan selisih kas bersih ${formatRupiah(
+      net
+    )}. Nilai aset stok gudang saat ini berjumlah ${formatRupiah(totalAssetValue)} dari ${products.length} SKU terdaftar.`;
+  }, [profile.storeName, transactions.length, products.length, monthIncome, monthExpense, totalAssetValue]);
 
-  // Handle cell edit
-  const handleUpdateRow = (id: string, field: string, value: any) => {
-    setSpreadsheetRows((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const updated = { ...r, [field]: value };
-        if (field === 'qty' || field === 'hargaSatuan') {
-          updated.subtotal = (Number(updated.qty) || 0) * (Number(updated.hargaSatuan) || 0);
-        }
-        return updated;
-      })
-    );
-  };
+  const displayedNarrative = customNarrative !== null ? customNarrative : autoNarrative;
 
-  // Add row to spreadsheet
+  // Category options for Interactive Spreadsheet (connected to master categories + transactions)
+  const spreadsheetCategoryOptions = useMemo(() => {
+    const set = new Set<string>([
+      'Penjualan',
+      'Bahan Baku',
+      'Operasional',
+      'Kemasan & Cup',
+      'Gaji Karyawan',
+      'Listrik & Air',
+    ]);
+    categoryDefinitions.forEach((c) => {
+      if (c.name) set.add(c.name);
+    });
+    transactions.forEach((t) => {
+      if (t.category) set.add(t.category);
+    });
+    set.add('Lainnya');
+    return Array.from(set).map((c) => ({ value: c, label: c }));
+  }, [categoryDefinitions, transactions]);
+
   const handleAddSpreadsheetRow = () => {
-    const newRow = {
-      id: `row-${Date.now()}`,
-      item: 'Item Baru',
-      kategori: 'Penjualan',
-      qty: 1,
-      unit: 'pcs',
-      hargaSatuan: 10000,
-      subtotal: 10000,
-      keterangan: 'Keterangan tambahan',
-    };
-    setSpreadsheetRows((prev) => [...prev, newRow]);
+    addTransaction({
+      date: toLocalIsoDate(new Date()),
+      type: 'income',
+      amount: 0,
+      category: 'Penjualan',
+      description: 'Transaksi Baru',
+      inputMethod: 'manual',
+    });
   };
 
-  // Delete row from spreadsheet
-  const handleDeleteSpreadsheetRow = (id: string) => {
-    setSpreadsheetRows((prev) => prev.filter((r) => r.id !== id));
-  };
+  const spreadsheetIncome = useMemo(
+    () => transactions.filter((t) => t.type === 'income').reduce((acc, t) => acc + t.amount, 0),
+    [transactions]
+  );
+  const spreadsheetExpense = useMemo(
+    () => transactions.filter((t) => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0),
+    [transactions]
+  );
+  const spreadsheetNet = spreadsheetIncome - spreadsheetExpense;
 
-  const spreadsheetTotal = spreadsheetRows.reduce((acc, r) => acc + r.subtotal, 0);
+  // Sale count map per product from real stockMovements
+  const saleCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    (stockMovements || []).forEach((m) => {
+      if (m.type === 'out_sale') {
+        map[m.productId] = (map[m.productId] || 0) + Math.abs(m.quantityDelta);
+      }
+    });
+    return map;
+  }, [stockMovements]);
 
-  // Fast-Moving: Products with highest out_sale quantity in stock movements
+  // Fast-Moving: ONLY products that actually have out_sale > 0
   const fastMoving = useMemo(() => {
-    const saleCountMap: Record<string, number> = {};
-    (stockMovements || []).forEach((m) => {
-      if (m.type === 'out_sale') {
-        saleCountMap[m.productId] = (saleCountMap[m.productId] || 0) + Math.abs(m.quantityDelta);
-      }
-    });
-    return [...products]
+    return products
+      .filter((p) => (saleCountMap[p.id] || 0) > 0)
       .sort((a, b) => (saleCountMap[b.id] || 0) - (saleCountMap[a.id] || 0))
-      .slice(0, 3);
-  }, [products, stockMovements]);
+      .slice(0, 5);
+  }, [products, saleCountMap]);
 
-  // Deadstock: Products with currentStock > 0 but lowest or 0 sales
+  // Deadstock: Products with currentStock > 0 and 0 sales
   const deadstockItems = useMemo(() => {
-    const saleCountMap: Record<string, number> = {};
-    (stockMovements || []).forEach((m) => {
-      if (m.type === 'out_sale') {
-        saleCountMap[m.productId] = (saleCountMap[m.productId] || 0) + Math.abs(m.quantityDelta);
-      }
-    });
-    const lowOrNoSales = products.filter((p) => p.currentStock > 0 && (saleCountMap[p.id] || 0) === 0);
-    return (lowOrNoSales.length > 0 ? lowOrNoSales : products.filter((p) => p.currentStock > 10)).slice(0, 3);
-  }, [products, stockMovements]);
+    return products
+      .filter((p) => p.currentStock > 0 && (saleCountMap[p.id] || 0) === 0)
+      .sort((a, b) => b.currentStock * b.hppAmount - a.currentStock * a.hppAmount)
+      .slice(0, 5);
+  }, [products, saleCountMap]);
 
   const totalLockedCapital = deadstockItems.reduce((acc, p) => acc + p.currentStock * p.hppAmount, 0);
 
@@ -394,7 +383,7 @@ export const AnalyticsView: React.FC = () => {
     if (active && payload && payload.length) {
       const data = payload[0];
       const totalDonut = categoryDonutData.reduce((acc, c) => acc + c.value, 0);
-      const pct = ((data.value / totalDonut) * 100).toFixed(1);
+      const pct = totalDonut > 0 ? ((data.value / totalDonut) * 100).toFixed(1) : '0';
       return (
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xl text-xs space-y-1.5 min-w-[210px]">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-1.5">
@@ -448,13 +437,14 @@ export const AnalyticsView: React.FC = () => {
             Analisis & Studio Laporan Resmi
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Visualisasi keuangan, identifikasi perputaran barang, dan lembar kerja perbankan
+            Visualisasi keuangan, identifikasi perputaran barang, dan lembar kerja transaksi terhubung
           </p>
         </div>
 
         {/* 1-Click Export Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
+            type="button"
             onClick={() => exportToExcel(profile, transactions, products)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-xs"
           >
@@ -463,6 +453,7 @@ export const AnalyticsView: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => exportToOfficialPdf(profile, transactions, products)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
           >
@@ -476,6 +467,7 @@ export const AnalyticsView: React.FC = () => {
       <div className="flex items-center justify-center sm:justify-start">
         <div className="inline-flex items-center p-1 bg-slate-100 border border-slate-200/80 rounded-full shadow-inner">
           <button
+            type="button"
             onClick={() => setViewSegment('chart')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'chart'
@@ -488,6 +480,7 @@ export const AnalyticsView: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => setViewSegment('report')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'report'
@@ -500,6 +493,7 @@ export const AnalyticsView: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => setViewSegment('table')}
             className={`flex items-center gap-2 px-5 py-2 rounded-full text-xs font-semibold transition-all ${
               viewSegment === 'table'
@@ -508,7 +502,7 @@ export const AnalyticsView: React.FC = () => {
             }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Spreadsheet Interaktif</span>
+            <span>Spreadsheet Interaktif ({transactions.length})</span>
           </button>
         </div>
       </div>
@@ -617,17 +611,17 @@ export const AnalyticsView: React.FC = () => {
                     Arus Kas {chartTimeframe === 'day' ? 'Harian' : chartTimeframe === 'week' ? 'Mingguan' : chartTimeframe === 'month' ? 'Bulanan' : 'Tahunan'} (Uang Masuk vs Uang Keluar)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Komparasi kas masuk vs pengeluaran kulakan & operasional ({chartTimeframe === 'day' ? 'Senin - Minggu' : chartTimeframe === 'week' ? '4 Minggu Terakhir' : chartTimeframe === 'month' ? '12 Bulan' : 'Tren Multi-Tahun'})
+                    Komparasi kas masuk vs pengeluaran kulakan & operasional ({chartTimeframe === 'day' ? '7 Hari Terakhir' : chartTimeframe === 'week' ? '4 Minggu Bulan Ini' : chartTimeframe === 'month' ? '12 Bulan' : 'Tren Multi-Tahun'})
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4 text-xs font-medium">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                     <span className="text-slate-600">Pemasukan</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                     <span className="text-slate-600">Pengeluaran</span>
                   </div>
                 </div>
@@ -640,7 +634,7 @@ export const AnalyticsView: React.FC = () => {
                     <YAxis
                       stroke="#94a3b8"
                       fontSize={10}
-                      tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
+                      tickFormatter={formatAxisRupiah}
                       tickLine={false}
                       axisLine={false}
                     />
@@ -651,14 +645,14 @@ export const AnalyticsView: React.FC = () => {
                     />
                     <Bar
                       dataKey="masuk"
-                      fill="#84cc16"
+                      fill="#10b981"
                       radius={[8, 8, 0, 0]}
                       barSize={24}
                       background={{ fill: '#f8fafc', radius: 8 }}
                     />
                     <Bar
                       dataKey="keluar"
-                      fill="#cbd5e1"
+                      fill="#ef4444"
                       radius={[8, 8, 0, 0]}
                       barSize={24}
                       background={{ fill: '#f8fafc', radius: 8 }}
@@ -703,7 +697,7 @@ export const AnalyticsView: React.FC = () => {
                     <YAxis
                       stroke="#94a3b8"
                       fontSize={10}
-                      tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
+                      tickFormatter={formatAxisRupiah}
                       tickLine={false}
                       axisLine={false}
                     />
@@ -731,51 +725,65 @@ export const AnalyticsView: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Komposisi Beban Usaha & Kulakan</h3>
-                  <p className="text-xs text-slate-500">Proporsi modal belanja per kategori utama untuk efisiensi toko</p>
+                  <p className="text-xs text-slate-500">Proporsi pengeluaran kas per kategori dari Buku Kas</p>
                 </div>
+                <span className="text-xs font-bold font-mono text-slate-900">
+                  Total Beban: {formatRupiah(categoryDonutData.reduce((s, c) => s + c.value, 0))}
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-6 pt-2">
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={categoryDonutData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={65}
-                        outerRadius={95}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {categoryDonutData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<CustomDonutTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
+              {categoryDonutData.length === 0 ? (
+                <div className="py-12 px-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center space-y-1">
+                  <p className="text-xs font-semibold text-slate-600">
+                    Belum Ada Pengeluaran Tercatat (Rp 0)
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Komposisi beban usaha akan otomatis tampil setelah Anda mencatat pengeluaran di Buku Kas atau kulakan di Gudang.
+                  </p>
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-6 pt-2">
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryDonutData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={65}
+                          outerRadius={95}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {categoryDonutData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomDonutTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
 
-                <div className="space-y-3">
-                  {categoryDonutData.map((cat, idx) => {
-                    const totalDonut = categoryDonutData.reduce((acc, c) => acc + c.value, 0);
-                    const pct = Math.round((cat.value / totalDonut) * 100);
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                          <span className="text-xs font-semibold text-slate-900">{cat.name}</span>
+                  <div className="space-y-3">
+                    {categoryDonutData.map((cat, idx) => {
+                      const totalDonut = categoryDonutData.reduce((acc, c) => acc + c.value, 0);
+                      const pct = totalDonut > 0 ? Math.round((cat.value / totalDonut) * 100) : 0;
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="text-xs font-semibold text-slate-900">{cat.name}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-slate-900 font-mono">{formatRupiah(cat.value)}</span>
+                            <span className="text-[10px] text-slate-500 ml-2">({pct}%)</span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-xs font-bold text-slate-900 font-mono">{formatRupiah(cat.value)}</span>
-                          <span className="text-[10px] text-slate-500 ml-2">({pct}%)</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -810,7 +818,7 @@ export const AnalyticsView: React.FC = () => {
                       yAxisId="left"
                       stroke="#94a3b8"
                       fontSize={10}
-                      tickFormatter={(v) => (v >= 1000000 ? `${v / 1000000} Jt` : `${v / 1000} Rb`)}
+                      tickFormatter={formatAxisRupiah}
                       tickLine={false}
                       axisLine={false}
                     />
@@ -852,31 +860,48 @@ export const AnalyticsView: React.FC = () => {
                   <h3 className="text-sm font-bold text-slate-900">Barang Terlaris (Fast-Moving)</h3>
                 </div>
                 <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-semibold font-mono">
-                  Penyumbang Laba Utama
+                  {fastMoving.length} Barang
                 </span>
               </div>
 
-              <div className="divide-y divide-slate-100 pt-1">
-                {fastMoving.map((p, idx) => (
-                  <div key={p.id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="w-5 text-center text-xs font-bold text-slate-900 font-mono">
-                        #{idx + 1}
-                      </span>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">{p.name}</div>
-                        <div className="text-[11px] text-slate-500">{p.category}</div>
+              {fastMoving.length === 0 ? (
+                <div className="py-8 px-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                  <p className="text-xs font-medium text-slate-500">Belum ada penjualan barang tercatat (0)</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 pt-1">
+                  {fastMoving.map((p, idx) => {
+                    const soldQty = saleCountMap[p.id] || 0;
+                    const marginPct =
+                      p.sellingPrice > 0
+                        ? Math.round(((p.sellingPrice - p.hppAmount) / p.sellingPrice) * 100)
+                        : 0;
+                    return (
+                      <div key={p.id} className="py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="w-5 text-center text-xs font-bold text-slate-900 font-mono">
+                            #{idx + 1}
+                          </span>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-900">{p.name}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {p.category || 'Umum'} • Terjual {soldQty} {p.unit}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs font-bold text-slate-900 font-mono">
+                            {formatRupiah(p.sellingPrice)}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            Margin: {marginPct}%
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-bold text-slate-900 font-mono">
-                        {formatRupiah(p.sellingPrice)}
-                      </div>
-                      <div className="text-[10px] text-slate-400">Margin: ~35%</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Barang Mengendap (Deadstock) */}
@@ -891,27 +916,33 @@ export const AnalyticsView: React.FC = () => {
                 </span>
               </div>
 
-              <div className="divide-y divide-slate-100 pt-1">
-                {deadstockItems.map((p) => {
-                  const lockedAmount = p.currentStock * p.hppAmount;
-                  return (
-                    <div key={p.id} className="py-3 flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">{p.name}</div>
-                        <div className="text-[11px] text-slate-500">
-                          Sisa: {p.currentStock} {p.unit} di gudang
+              {deadstockItems.length === 0 ? (
+                <div className="py-8 px-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                  <p className="text-xs font-medium text-slate-500">Belum ada barang mengendap (0)</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 pt-1">
+                  {deadstockItems.map((p) => {
+                    const lockedAmount = p.currentStock * p.hppAmount;
+                    return (
+                      <div key={p.id} className="py-3 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-900">{p.name}</div>
+                          <div className="text-[11px] text-slate-500">
+                            Sisa: {p.currentStock} {p.unit} di gudang
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs font-bold text-slate-900 font-mono">
+                            {formatRupiah(lockedAmount)}
+                          </div>
+                          <div className="text-[10px] text-slate-400">Modal tertahan</div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-slate-900 font-mono">
-                          {formatRupiah(lockedAmount)}
-                        </div>
-                        <div className="text-[10px] text-slate-400">Modal tertahan</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -921,7 +952,7 @@ export const AnalyticsView: React.FC = () => {
       {viewSegment === 'report' && (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-6 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
-            <div>
+            <div className="flex-1">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 Dokumen Resmi Laba Rugi UMKM
               </span>
@@ -933,6 +964,7 @@ export const AnalyticsView: React.FC = () => {
               />
             </div>
             <button
+              type="button"
               onClick={() => exportToOfficialPdf(profile, transactions, products)}
               className="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
             >
@@ -943,9 +975,15 @@ export const AnalyticsView: React.FC = () => {
 
           {/* Letterhead Preview */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-            <div className="font-bold text-slate-900 text-sm">{profile.storeName.toUpperCase()}</div>
-            <div>{profile.address} | Telp: {profile.phone}</div>
-            <div>Penanggung Jawab: {profile.ownerName} | Rekening: {profile.bankAccount}</div>
+            <div className="font-bold text-slate-900 text-sm">
+              {(profile.storeName?.trim() || 'NAMA TOKO BELUM DIISI').toUpperCase()}
+            </div>
+            <div>
+              Alamat: {profile.address?.trim() || '-'} | Telp: {profile.phone?.trim() || '-'}
+            </div>
+            <div>
+              Penanggung Jawab: {profile.ownerName?.trim() || '-'} | Rekening: {profile.bankAccount?.trim() || '-'}
+            </div>
           </div>
 
           {/* Narrative Textarea (Fully Editable) */}
@@ -954,13 +992,13 @@ export const AnalyticsView: React.FC = () => {
               <label className="text-xs font-semibold text-slate-700">
                 Narasi Ringkasan Analisis (Bebas Diedit):
               </label>
-              <span className="text-[10px] text-slate-400">Dapat diedit langsung sebelum dicetak</span>
+              <span className="text-[10px] text-slate-400">Terhubung otomatis & dapat diedit</span>
             </div>
 
             <textarea
               rows={5}
-              value={reportNarrative}
-              onChange={(e) => setReportNarrative(e.target.value)}
+              value={displayedNarrative}
+              onChange={(e) => setCustomNarrative(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl p-4 text-xs text-slate-800 leading-relaxed focus:outline-none focus:bg-white"
             />
           </div>
@@ -968,11 +1006,11 @@ export const AnalyticsView: React.FC = () => {
           {/* Financial Summary Breakdown */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-[11px] text-slate-500">Total Pemasukan</div>
+              <div className="text-[11px] text-slate-500">Total Pemasukan Bulan Ini</div>
               <div className="text-lg font-bold text-slate-900 font-mono">{formatRupiah(monthIncome)}</div>
             </div>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="text-[11px] text-slate-500">Total Pengeluaran</div>
+              <div className="text-[11px] text-slate-500">Total Pengeluaran Bulan Ini</div>
               <div className="text-lg font-bold text-rose-600 font-mono">{formatRupiah(monthExpense)}</div>
             </div>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
@@ -983,22 +1021,23 @@ export const AnalyticsView: React.FC = () => {
         </div>
       )}
 
-      {/* 5. SEGMENT 3: IN-APP SPREADSHEET (Editable Cells & Add/Delete Rows) */}
+      {/* 5. SEGMENT 3: IN-APP SPREADSHEET (100% Connected to Live Transactions) */}
       {viewSegment === 'table' && (
         <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs space-y-0">
           <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80">
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-slate-700" />
-                <span>Lembar Kerja Spreadsheet Interaktif</span>
+                <span>Lembar Kerja Spreadsheet Interaktif (Sinkron Buku Kas)</span>
               </h3>
               <p className="text-xs text-slate-500">
-                Klik sel mana pun untuk mengubah angka atau teks secara langsung sebelum ekspor Excel
+                Setiap perubahan atau penambahan baris langsung tersinkronisasi dengan Buku Kas, Dashboard, dan Excel
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={handleAddSpreadsheetRow}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold shadow-xs"
               >
@@ -1007,6 +1046,7 @@ export const AnalyticsView: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => exportToExcel(profile, transactions, products)}
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm"
               >
@@ -1020,110 +1060,132 @@ export const AnalyticsView: React.FC = () => {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[11px]">
-                  <th className="py-2.5 px-3 w-8">#</th>
-                  <th className="py-2.5 px-3">Nama Item / Transaksi</th>
-                  <th className="py-2.5 px-3 w-32">Kategori</th>
-                  <th className="py-2.5 px-3 w-20 text-center">Jumlah</th>
-                  <th className="py-2.5 px-3 w-20 text-center">Satuan</th>
-                  <th className="py-2.5 px-3 w-32 text-right">Harga Satuan (Rp)</th>
-                  <th className="py-2.5 px-3 w-36 text-right">Subtotal (Rp)</th>
-                  <th className="py-2.5 px-3">Keterangan</th>
-                  <th className="py-2.5 px-3 w-10 text-center">Aksi</th>
+                  <th className="py-2.5 px-3 w-8 text-center">#</th>
+                  <th className="py-2.5 px-3 w-44">Tanggal</th>
+                  <th className="py-2.5 px-3 w-36">Arus Kas</th>
+                  <th className="py-2.5 px-3">Deskripsi Transaksi</th>
+                  <th className="py-2.5 px-3 w-44">Kategori</th>
+                  <th className="py-2.5 px-3 w-40 text-right">Nominal (Rp)</th>
+                  <th className="py-2.5 px-3 w-12 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {spreadsheetRows.map((row, idx) => (
-                  <tr key={row.id} className="hover:bg-slate-50">
-                    <td className="py-2 px-3 text-slate-400 text-center font-mono">{idx + 1}</td>
-
-                    <td className="py-1 px-2">
-                      <input
-                        type="text"
-                        value={row.item}
-                        onChange={(e) => handleUpdateRow(row.id, 'item', e.target.value)}
-                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 font-medium focus:outline-none"
-                      />
-                    </td>
-
-                    <td className="py-1 px-2 w-44">
-                      <CustomDropdown
-                        value={row.kategori}
-                        onChange={(val) => handleUpdateRow(row.id, 'kategori', val)}
-                        options={[
-                          { value: 'Penjualan', label: 'Penjualan' },
-                          { value: 'Pengeluaran', label: 'Pengeluaran' },
-                          { value: 'Bahan Baku', label: 'Bahan Baku' },
-                          { value: 'Operasional', label: 'Operasional' },
-                        ]}
-                        buttonClassName="bg-white border-slate-200 text-slate-800"
-                      />
-                    </td>
-
-                    <td className="py-1 px-2">
-                      <input
-                        type="number"
-                        value={row.qty}
-                        onChange={(e) =>
-                          handleUpdateRow(row.id, 'qty', parseInt(e.target.value) || 0)
-                        }
-                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 text-center focus:outline-none font-bold font-mono"
-                      />
-                    </td>
-
-                    <td className="py-1 px-2">
-                      <input
-                        type="text"
-                        value={row.unit}
-                        onChange={(e) => handleUpdateRow(row.id, 'unit', e.target.value)}
-                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-600 text-center focus:outline-none"
-                      />
-                    </td>
-
-                    <td className="py-1 px-2">
-                      <input
-                        type="number"
-                        value={row.hargaSatuan}
-                        onChange={(e) =>
-                          handleUpdateRow(row.id, 'hargaSatuan', parseInt(e.target.value) || 0)
-                        }
-                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-900 text-right focus:outline-none font-semibold font-mono"
-                      />
-                    </td>
-
-                    <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
-                      {formatRupiah(row.subtotal)}
-                    </td>
-
-                    <td className="py-1 px-2">
-                      <input
-                        type="text"
-                        value={row.keterangan}
-                        onChange={(e) => handleUpdateRow(row.id, 'keterangan', e.target.value)}
-                        className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded px-2 py-1 text-slate-600 focus:outline-none"
-                      />
-                    </td>
-
-                    <td className="py-2 px-3 text-center">
-                      <button
-                        onClick={() => handleDeleteSpreadsheetRow(row.id)}
-                        className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
-                        title="Hapus baris"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-600">
+                          Lembar Kerja Masih Kosong (0 Baris)
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Klik "+ Tambah Baris" di kanan atas atau catat transaksi dari Buku Kas / Suara.
+                        </p>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  transactions.map((trx, idx) => (
+                    <tr key={trx.id} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-400 text-center font-mono">{idx + 1}</td>
+
+                      <td className="py-1.5 px-2 w-44">
+                        <AccessibleDatePicker
+                          value={trx.date}
+                          onChange={(val) =>
+                            updateTransaction(trx.id, { date: val || toLocalIsoDate(new Date()) })
+                          }
+                          allowClear={false}
+                          compact
+                        />
+                      </td>
+
+                      <td className="py-1.5 px-2 w-36">
+                        <CustomDropdown
+                          value={trx.type}
+                          onChange={(val) =>
+                            updateTransaction(trx.id, {
+                              type: val as 'income' | 'expense',
+                            })
+                          }
+                          options={[
+                            { value: 'income', label: '+ Masuk' },
+                            { value: 'expense', label: '- Keluar' },
+                          ]}
+                          buttonClassName={`bg-white border-slate-200 font-semibold ${
+                            trx.type === 'income' ? 'text-emerald-700' : 'text-rose-600'
+                          }`}
+                        />
+                      </td>
+
+                      <td className="py-1.5 px-2">
+                        <input
+                          type="text"
+                          value={trx.description}
+                          onChange={(e) =>
+                            updateTransaction(trx.id, { description: e.target.value })
+                          }
+                          placeholder="Deskripsi transaksi..."
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-medium focus:outline-none"
+                        />
+                      </td>
+
+                      <td className="py-1.5 px-2 w-44">
+                        <CustomDropdown
+                          value={trx.category}
+                          onChange={(val) => updateTransaction(trx.id, { category: val })}
+                          options={spreadsheetCategoryOptions}
+                          buttonClassName="bg-white border-slate-200 text-slate-800"
+                        />
+                      </td>
+
+                      <td className="py-1.5 px-2 w-40">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={trx.amount === 0 ? '0' : formatThousands(trx.amount)}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '');
+                            updateTransaction(trx.id, {
+                              amount: raw === '' ? 0 : parseThousands(raw),
+                            });
+                          }}
+                          className={`w-full bg-transparent hover:bg-white focus:bg-white border border-transparent focus:border-slate-300 rounded-lg px-2.5 py-1.5 text-right focus:outline-none font-bold font-mono ${
+                            trx.type === 'income' ? 'text-emerald-700' : 'text-rose-600'
+                          }`}
+                        />
+                      </td>
+
+                      <td className="py-2 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => deleteTransaction(trx.id)}
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                          title="Hapus baris transaksi"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
-          <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between text-xs">
+          <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <span className="text-slate-500">
-              Total {spreadsheetRows.length} baris lembar kerja
+              Total <span className="font-bold text-slate-900">{transactions.length}</span> baris transaksi
             </span>
-            <div className="text-sm font-bold text-slate-900 font-mono">
-              Total: <span>{formatRupiah(spreadsheetTotal)}</span>
+            <div className="flex items-center gap-4 font-mono">
+              <span className="text-emerald-700 font-semibold">
+                Masuk: {formatRupiah(spreadsheetIncome)}
+              </span>
+              <span className="text-rose-600 font-semibold">
+                Keluar: {formatRupiah(spreadsheetExpense)}
+              </span>
+              <span className="text-sm font-bold text-slate-900 border-l border-slate-200 pl-3">
+                Saldo Bersih: {formatRupiah(spreadsheetNet)}
+              </span>
             </div>
           </div>
         </div>

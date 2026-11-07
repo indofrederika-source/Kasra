@@ -7,7 +7,6 @@ import {
   ScanLine,
   X,
   Upload,
-  FileText,
 } from 'lucide-react';
 
 interface ReceiptScanModalProps {
@@ -19,18 +18,28 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
   const { products, setActiveDraft } = useKasra();
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [receiptName, setReceiptName] = useState('Nota_Grosir_Sembako_Agen_Berkah.jpg');
+  const [receiptName, setReceiptName] = useState('');
 
   if (!isOpen) return null;
 
+  const handleCloseModal = () => {
+    setIsProcessing(false);
+    setSelectedImage(null);
+    setReceiptName('');
+    onClose();
+  };
+
   const handleSimulateScan = () => {
+    if (!selectedImage) return;
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
-      const draft = parseReceiptImage(receiptName, products);
+      const draft = parseReceiptImage(receiptName || 'Nota_Belanja.jpg', products);
       setActiveDraft(draft);
+      setSelectedImage(null);
+      setReceiptName('');
       onClose();
-    }, 1200);
+    }, 900);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,14 +64,14 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
               <ScanLine className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Scan Foto Nota Belanja Grosir</h2>
+              <h2 className="text-sm font-bold text-slate-900">Scan Foto Nota Belanja</h2>
               <p className="text-[11px] text-slate-500">
-                AI otomatis membaca baris nota untuk update Kas Keluar & Stok Masuk
+                Membaca baris nota untuk menyiapkan draf Kas Keluar & Stok Masuk
               </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleCloseModal}
             className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -71,7 +80,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
 
         {/* Upload & Preview Area */}
         <div className="p-6 space-y-4">
-          <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50 hover:bg-slate-50/80 group">
+          <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors bg-slate-50 hover:bg-slate-50/80 group">
             <input
               type="file"
               accept="image/*"
@@ -84,55 +93,31 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
                 <img
                   src={selectedImage}
                   alt="Preview Nota"
-                  className="max-h-48 rounded-lg object-contain mx-auto border border-slate-200 shadow-xs"
+                  className="max-h-52 rounded-lg object-contain mx-auto border border-slate-200 shadow-xs"
                 />
                 <p className="text-xs text-slate-800 font-medium">{receiptName}</p>
-                <p className="text-[11px] text-slate-400">Klik untuk mengganti gambar</p>
+                <p className="text-[11px] text-slate-400">Klik untuk mengganti gambar nota</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto text-slate-600 group-hover:text-slate-900 shadow-2xs transition-colors">
                   <Upload className="w-5 h-5" />
                 </div>
                 <div className="text-xs font-semibold text-slate-800">
-                  Ambil Foto Nota atau Unggah Berkas
+                  Ambil Foto Nota atau Unggah Berkas Gambar
                 </div>
-                <p className="text-[11px] text-slate-400">Mendukung format JPG, PNG, atau HEIC dari ponsel</p>
+                <p className="text-[11px] text-slate-400">
+                  Mendukung format JPG, PNG, atau WEBP. Rincian draf dapat diedit kembali sebelum disimpan.
+                </p>
               </div>
             )}
           </label>
-
-          {/* 1-Click Sample Nota Button */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <FileText className="w-4 h-4 text-slate-600 shrink-0" />
-              <div>
-                <div className="text-xs font-semibold text-slate-800">
-                  Gunakan Contoh Nota Grosir Agen Berkah
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  (Susu Diamond 12L, Gula Aren 6L, Cup 100 pcs)
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedImage(
-                  'https://images.unsplash.com/photo-1554415707-9e49fe83320c?w=500&auto=format&fit=crop&q=80'
-                );
-                setReceiptName('Nota_Grosir_Agen_Berkah_26Okt.jpg');
-              }}
-              className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold transition-colors shadow-2xs"
-            >
-              Pilih Contoh
-            </button>
-          </div>
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <button
-            onClick={onClose}
+            onClick={handleCloseModal}
             className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
           >
             Batal
@@ -140,7 +125,7 @@ export const ReceiptScanModal: React.FC<ReceiptScanModalProps> = ({ isOpen, onCl
 
           <button
             onClick={handleSimulateScan}
-            disabled={isProcessing}
+            disabled={!selectedImage || isProcessing}
             className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
           >
             <span>{isProcessing ? 'Memproses Nota...' : 'Pindai Nota'}</span>

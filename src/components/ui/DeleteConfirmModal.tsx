@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
 export interface DeleteConfirmModalProps {
@@ -28,6 +29,12 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onCancel,
   onClose,
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   if (!isOpen) return null;
 
   const handleClose = () => {
@@ -37,9 +44,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 
   const promptMessage = message || description || 'Data yang dihapus tidak dapat dipulihkan kembali dari sistem.';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-150">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl p-6 sm:p-7 space-y-4 animate-in zoom-in-95 duration-150 my-auto">
         <div className="flex items-center justify-between">
           <div
             className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
@@ -59,7 +66,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
         </div>
 
         <div className="space-y-1">
-          <h3 className="text-base font-bold text-slate-900">{title}</h3>
+          <h3 className="text-base font-bold text-slate-900 leading-snug">{title}</h3>
           {itemName ? (
             <p className="text-xs text-slate-600">
               Apakah Anda yakin ingin memproses tindakan untuk{' '}
@@ -94,4 +101,10 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
       </div>
     </div>
   );
+
+  if (mounted && typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 };

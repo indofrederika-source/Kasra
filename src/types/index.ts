@@ -131,7 +131,7 @@ export interface CategoryChangeDraft {
 
 export interface ConfirmationDraft {
   id: string;
-  source: 'mic_omni' | 'mic_storage' | 'photo_receipt' | 'photo_product';
+  source: 'mic_omni' | 'mic_storage' | 'photo_receipt' | 'photo_product' | 'calculator';
   title: string;
   explanation: string;
   cashChanges: CashChangeDraft[];
@@ -141,4 +141,4 @@ export interface ConfirmationDraft {
   timestamp: string;
 }
 
-export type TabType = 'dashboard' | 'cash' | 'storage' | 'analytics' | 'promo' | 'settings';
+export type TabType = 'dashboard' | 'cash' | 'storage' | 'analytics' | 'settings';

@@ -1,23 +1,27 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { KasraProvider, useKasra } from '@/lib/store/KasraContext';
+import { AuthView } from '@/components/auth/AuthView';
 import { SidebarRail } from '@/components/layout/SidebarRail';
 import { HeaderBar } from '@/components/layout/HeaderBar';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { CashView } from '@/components/cash/CashView';
 import { StorageView } from '@/components/storage/StorageView';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
-import { PromoView } from '@/components/promo/PromoView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { ConfirmationDraftModal } from '@/components/shared/ConfirmationDraftModal';
 import { QuickVoiceModal } from '@/components/shared/QuickVoiceModal';
 import { ReceiptScanModal } from '@/components/shared/ReceiptScanModal';
+import { QuickCalculatorModal } from '@/components/shared/QuickCalculatorModal';
+import { KasraLogo } from '@/components/ui/KasraLogo';
 
 function KasraAppContent() {
   const { activeTab, activeDraft } = useKasra();
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F8FAFC] text-slate-900">
@@ -30,6 +34,8 @@ function KasraAppContent() {
         <HeaderBar
           onOpenVoice={() => setIsVoiceOpen(true)}
           onOpenScan={() => setIsScanOpen(true)}
+          isCalculatorOpen={isCalculatorOpen}
+          onToggleCalculator={() => setIsCalculatorOpen((prev) => !prev)}
         />
 
         {/* Scrollable Viewport */}
@@ -39,6 +45,7 @@ function KasraAppContent() {
               <DashboardView
                 onOpenVoice={() => setIsVoiceOpen(true)}
                 onOpenScan={() => setIsScanOpen(true)}
+                onOpenCalculator={() => setIsCalculatorOpen((prev) => !prev)}
               />
             )}
             {activeTab === 'cash' && (
@@ -54,7 +61,6 @@ function KasraAppContent() {
               />
             )}
             {activeTab === 'analytics' && <AnalyticsView />}
-            {activeTab === 'promo' && <PromoView />}
             {activeTab === 'settings' && <SettingsView />}
           </div>
         </main>
@@ -76,7 +82,38 @@ function KasraAppContent() {
         isOpen={isScanOpen}
         onClose={() => setIsScanOpen(false)}
       />
+
+      {/* Floating Draggable Quick Calculator */}
+      <QuickCalculatorModal
+        isOpen={isCalculatorOpen}
+        onClose={() => setIsCalculatorOpen(false)}
+      />
     </div>
+  );
+}
+
+function KasraWorkspaceShell() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen bg-[#F8FAFC] flex flex-col items-center justify-center gap-3 text-slate-600 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-md ring-4 ring-slate-100 animate-pulse">
+          <KasraLogo className="w-7 h-7 text-white" />
+        </div>
+        <p className="text-xs font-mono text-slate-500">Memeriksa autentikasi sesi KASRA...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthView />;
+  }
+
+  return (
+    <KasraProvider>
+      <KasraAppContent />
+    </KasraProvider>
   );
 }
 
@@ -89,9 +126,9 @@ export default function KasraPage() {
         </div>
       }
     >
-      <KasraProvider>
-        <KasraAppContent />
-      </KasraProvider>
+      <AuthProvider>
+        <KasraWorkspaceShell />
+      </AuthProvider>
     </React.Suspense>
   );
 }

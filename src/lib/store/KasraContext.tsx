@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import {
   Product,
   Transaction,
@@ -19,7 +19,16 @@ import {
   INITIAL_TRANSACTIONS,
   INITIAL_STOCK_MOVEMENTS,
 } from '@/lib/mockData';
-import { formatBatchName, getActiveProductExpiry, formatDateIndo } from '@/lib/utils';
+import { formatBatchName, getActiveProductExpiry } from '@/lib/utils';
+import { useAuth } from '@/lib/auth/AuthContext';
+
+function getLocalTodayIso(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 interface KasraContextType {
   activeTab: TabType;
@@ -31,8 +40,6 @@ interface KasraContextType {
   categories: string[];
   categoryDefinitions: CategoryDefinition[];
   activeDraft: ConfirmationDraft | null;
-  selectedProductForPromo: Product | null;
-  setSelectedProductForPromo: (product: Product | null) => void;
   // Actions
   addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Product;
   updateProduct: (id: string, updates: Partial<Product>) => void;
@@ -40,6 +47,7 @@ interface KasraContextType {
   addCategory: (mainCategory: string, subcategory?: string) => void;
   addSubcategory: (mainCategory: string, subcategory: string) => void;
   deleteCategory: (categoryId: string) => void;
+  deleteSubcategory: (mainCategory: string, subcategory: string) => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Transaction;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
@@ -71,97 +79,227 @@ interface KasraContextType {
 
 const KasraContext = createContext<KasraContextType | undefined>(undefined);
 
-const STORAGE_KEYS = {
-  PRODUCTS: 'kasra_products_v1',
-  TRANSACTIONS: 'kasra_transactions_v1',
-  MOVEMENTS: 'kasra_movements_v1',
-  PROFILE: 'kasra_profile_v1',
-  CATEGORIES: 'kasra_categories_v1',
-  CATEGORY_DEFS: 'kasra_category_defs_v2',
-};
-
 export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, updateAccountProfile } = useAuth();
+  const uid = user?.id || 'guest';
+
+  const storageKeys = useMemo(
+    () => ({
+      PRODUCTS: `kasra_v3_${uid}_products`,
+      TRANSACTIONS: `kasra_v3_${uid}_transactions`,
+      MOVEMENTS: `kasra_v3_${uid}_movements`,
+      PROFILE: `kasra_v3_${uid}_profile`,
+      CATEGORY_DEFS: `kasra_v3_${uid}_category_defs`,
+    }),
+    [uid]
+  );
+
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(INITIAL_STOCK_MOVEMENTS);
-  const [profile, setProfile] = useState<StoreProfile>(INITIAL_PROFILE);
-  const [categoryDefinitions, setCategoryDefinitions] = useState<CategoryDefinition[]>(INITIAL_CATEGORY_DEFINITIONS);
+  const [profile, setProfile] = useState<StoreProfile>(() => ({
+    ...INITIAL_PROFILE,
+    storeName: user?.storeName || INITIAL_PROFILE.storeName,
+    ownerName: user?.name || INITIAL_PROFILE.ownerName,
+    businessCategory: user?.businessCategory || INITIAL_PROFILE.businessCategory,
+  }));
+  const [categoryDefinitions, setCategoryDefinitions] = useState<CategoryDefinition[]>(
+    INITIAL_CATEGORY_DEFINITIONS
+  );
   const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
   const [activeDraft, setActiveDraft] = useState<ConfirmationDraft | null>(null);
-  const [selectedProductForPromo, setSelectedProductForPromo] = useState<Product | null>(null);
+  const [todayIso, setTodayIso] = useState<string>(() => getLocalTodayIso());
+  const hydratedUidRef = useRef<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [todayIso, setTodayIso] = useState('2026-10-26');
 
-  // Hydrate from localStorage on client mount
+  // Hydrate per-user clean workspace from localStorage on mount / user change
   useEffect(() => {
-    setTodayIso(new Date().toISOString().split('T')[0]);
+    setIsHydrated(false);
+    setTodayIso(getLocalTodayIso());
+
     try {
-      const storedProds = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-      if (storedProds) setProducts(JSON.parse(storedProds));
+      const storedProds = localStorage.getItem(storageKeys.PRODUCTS);
+      setProducts(storedProds ? JSON.parse(storedProds) : []);
 
-      const storedTrx = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-      if (storedTrx) setTransactions(JSON.parse(storedTrx));
+      const storedTrx = localStorage.getItem(storageKeys.TRANSACTIONS);
+      setTransactions(storedTrx ? JSON.parse(storedTrx) : []);
 
-      const storedMov = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-      if (storedMov) setStockMovements(JSON.parse(storedMov));
+      const storedMov = localStorage.getItem(storageKeys.MOVEMENTS);
+      setStockMovements(storedMov ? JSON.parse(storedMov) : []);
 
-      const storedProf = localStorage.getItem(STORAGE_KEYS.PROFILE);
-      if (storedProf) setProfile(JSON.parse(storedProf));
-
-      const storedDefs = localStorage.getItem(STORAGE_KEYS.CATEGORY_DEFS);
-      if (storedDefs) {
-        const parsed = JSON.parse(storedDefs);
-        setCategoryDefinitions(parsed);
-        setCategories(['Semua', ...parsed.map((c: CategoryDefinition) => c.name)]);
+      const storedProf = localStorage.getItem(storageKeys.PROFILE);
+      if (storedProf) {
+        setProfile(JSON.parse(storedProf));
       } else {
-        const storedCats = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-        if (storedCats) setCategories(JSON.parse(storedCats));
+        setProfile({
+          ...INITIAL_PROFILE,
+          storeName: user?.storeName || INITIAL_PROFILE.storeName,
+          ownerName: user?.name || INITIAL_PROFILE.ownerName,
+          businessCategory: user?.businessCategory || '',
+          monthlyTarget: 0,
+        });
+      }
+
+      const storedDefs = localStorage.getItem(storageKeys.CATEGORY_DEFS);
+      if (storedDefs) {
+        const parsed: CategoryDefinition[] = JSON.parse(storedDefs);
+        setCategoryDefinitions(parsed);
+        setCategories(['Semua', ...parsed.map((c) => c.name)]);
+      } else {
+        setCategoryDefinitions([]);
+        setCategories(['Semua']);
       }
     } catch (e) {
-      console.warn('Failed to parse cached local data, using seed defaults', e);
+      console.warn('Failed to parse cached local data, using empty defaults', e);
+      setProducts([]);
+      setTransactions([]);
+      setStockMovements([]);
+      setCategoryDefinitions([]);
+      setCategories(['Semua']);
     }
+
+    hydratedUidRef.current = uid;
     setIsHydrated(true);
-  }, []);
+  }, [storageKeys, uid, user]);
 
   // Save changes to localStorage after hydration
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || hydratedUidRef.current !== uid) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
-      localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(stockMovements));
-      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
-      localStorage.setItem(STORAGE_KEYS.CATEGORY_DEFS, JSON.stringify(categoryDefinitions));
-      localStorage.setItem(
-        STORAGE_KEYS.CATEGORIES,
-        JSON.stringify(['Semua', ...categoryDefinitions.map((c) => c.name)])
-      );
+      localStorage.setItem(storageKeys.PRODUCTS, JSON.stringify(products));
+      localStorage.setItem(storageKeys.TRANSACTIONS, JSON.stringify(transactions));
+      localStorage.setItem(storageKeys.MOVEMENTS, JSON.stringify(stockMovements));
+      localStorage.setItem(storageKeys.PROFILE, JSON.stringify(profile));
+      localStorage.setItem(storageKeys.CATEGORY_DEFS, JSON.stringify(categoryDefinitions));
     } catch (e) {
       console.warn('Failed to persist to localStorage', e);
     }
-  }, [products, transactions, stockMovements, profile, categoryDefinitions, isHydrated]);
+  }, [products, transactions, stockMovements, profile, categoryDefinitions, isHydrated, storageKeys, uid]);
+
+  const addCategory = (mainCategory: string, subcategory?: string) => {
+    const trimmed = mainCategory.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'semua') return;
+
+    setCategoryDefinitions((prev) => {
+      const existing = prev.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+      if (existing) {
+        if (
+          subcategory &&
+          subcategory.trim() &&
+          !existing.subcategories.some((s) => s.toLowerCase() === subcategory.trim().toLowerCase())
+        ) {
+          return prev.map((c) =>
+            c.id === existing.id
+              ? { ...c, subcategories: [...c.subcategories, subcategory.trim()] }
+              : c
+          );
+        }
+        return prev;
+      }
+      const newDef: CategoryDefinition = {
+        id: `cat-main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: trimmed,
+        subcategories: subcategory && subcategory.trim() ? [subcategory.trim()] : [],
+      };
+      return [...prev, newDef];
+    });
+
+    setCategories((prev) => {
+      if (prev.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return prev;
+      return [...prev, trimmed];
+    });
+  };
+
+  const addSubcategory = (mainCategory: string, subcategory: string) => {
+    const cleanMain = mainCategory.trim();
+    const cleanSub = subcategory.trim();
+    if (!cleanMain || !cleanSub) return;
+
+    setCategoryDefinitions((prev) => {
+      const existing = prev.find((c) => c.name.toLowerCase() === cleanMain.toLowerCase());
+      if (existing) {
+        if (!existing.subcategories.some((s) => s.toLowerCase() === cleanSub.toLowerCase())) {
+          return prev.map((c) =>
+            c.id === existing.id ? { ...c, subcategories: [...c.subcategories, cleanSub] } : c
+          );
+        }
+        return prev;
+      }
+      const newDef: CategoryDefinition = {
+        id: `cat-main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: cleanMain,
+        subcategories: [cleanSub],
+      };
+      return [...prev, newDef];
+    });
+
+    setCategories((prev) => {
+      if (prev.some((c) => c.toLowerCase() === cleanMain.toLowerCase())) return prev;
+      return [...prev, cleanMain];
+    });
+  };
+
+  const deleteCategory = (categoryIdOrName: string) => {
+    const target = categoryIdOrName.trim().toLowerCase();
+    setCategoryDefinitions((prev) => {
+      const next = prev.filter(
+        (c) => c.id !== categoryIdOrName && c.name.toLowerCase() !== target
+      );
+      setCategories(['Semua', ...next.map((c) => c.name)]);
+      return next;
+    });
+  };
+
+  const deleteSubcategory = (mainCategory: string, subcategory: string) => {
+    setCategoryDefinitions((prev) =>
+      prev.map((c) =>
+        c.name.toLowerCase() === mainCategory.toLowerCase()
+          ? {
+              ...c,
+              subcategories: c.subcategories.filter(
+                (s) => s.toLowerCase() !== subcategory.toLowerCase()
+              ),
+            }
+          : c
+      )
+    );
+  };
 
   // Product Operations
   const addProduct = (data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const nowIso = getLocalTodayIso();
+
+    if (data.category && data.category.trim()) {
+      addCategory(data.category.trim(), data.subcategory?.trim() || undefined);
+    }
+
     const newProduct: Product = {
       ...data,
-      id: `prod-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
+      id: `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
     setProducts((prev) => [newProduct, ...prev]);
 
-    // Record initial stock movement
+    // Record initial stock movement if stock > 0
     if (newProduct.currentStock > 0) {
       const movement: StockMovement = {
-        id: `mov-${Date.now()}`,
+        id: `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         productId: newProduct.id,
         productName: newProduct.name,
+        sku: newProduct.sku,
+        category: newProduct.category,
+        location: newProduct.location || 'Gudang Utama',
         type: 'in_purchase',
         quantityDelta: newProduct.currentStock,
+        unit: newProduct.unit,
         stockBefore: 0,
         stockAfter: newProduct.currentStock,
+        batchCode: formatBatchName(newProduct.purchaseDate || nowIso),
+        batchExpiry: newProduct.expiryDate || null,
+        financialAmount: (newProduct.hppAmount || 0) * newProduct.currentStock,
+        source: 'Input Barang Baru',
         notes: 'Stok Awal Produk Baru',
         createdAt: new Date().toLocaleString('id-ID'),
       };
@@ -172,13 +310,18 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
+    if (updates.category && updates.category.trim()) {
+      addCategory(updates.category.trim(), updates.subcategory?.trim() || undefined);
+    }
+
+    const nowIso = getLocalTodayIso();
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
           return {
             ...p,
             ...updates,
-            updatedAt: new Date().toISOString().split('T')[0],
+            updatedAt: nowIso,
           };
         }
         return p;
@@ -194,74 +337,11 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
   };
 
-  const addCategory = (mainCategory: string, subcategory?: string) => {
-    const trimmed = mainCategory.trim();
-    if (!trimmed) return;
-
-    setCategoryDefinitions((prev) => {
-      const existing = prev.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
-      if (existing) {
-        if (subcategory && subcategory.trim() && !existing.subcategories.includes(subcategory.trim())) {
-          return prev.map((c) =>
-            c.id === existing.id
-              ? { ...c, subcategories: [...c.subcategories, subcategory.trim()] }
-              : c
-          );
-        }
-        return prev;
-      }
-      const newDef: CategoryDefinition = {
-        id: `cat-main-${Date.now()}`,
-        name: trimmed,
-        subcategories: subcategory && subcategory.trim() ? [subcategory.trim()] : [],
-      };
-      return [...prev, newDef];
-    });
-
-    setCategories((prev) => {
-      if (prev.includes(trimmed)) return prev;
-      return [...prev, trimmed];
-    });
-  };
-
-  const addSubcategory = (mainCategory: string, subcategory: string) => {
-    const cleanSub = subcategory.trim();
-    if (!cleanSub) return;
-
-    setCategoryDefinitions((prev) => {
-      const existing = prev.find((c) => c.name.toLowerCase() === mainCategory.toLowerCase());
-      if (existing) {
-        if (!existing.subcategories.some((s) => s.toLowerCase() === cleanSub.toLowerCase())) {
-          return prev.map((c) =>
-            c.id === existing.id ? { ...c, subcategories: [...c.subcategories, cleanSub] } : c
-          );
-        }
-        return prev;
-      }
-      // If main category doesn't exist, create it with this subcategory
-      const newDef: CategoryDefinition = {
-        id: `cat-main-${Date.now()}`,
-        name: mainCategory.trim(),
-        subcategories: [cleanSub],
-      };
-      return [...prev, newDef];
-    });
-
-    setCategories((prev) => {
-      if (prev.includes(mainCategory.trim())) return prev;
-      return [...prev, mainCategory.trim()];
-    });
-  };
-
-  const deleteCategory = (categoryId: string) => {
-    setCategoryDefinitions((prev) => prev.filter((c) => c.id !== categoryId));
-  };
-
   // Transaction Operations
   const addTransaction = (data: Omit<Transaction, 'id' | 'createdAt'>) => {
     const trxId = `trx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const nowReadable = new Date().toLocaleString('id-ID');
-    const nowIso = data.date || new Date().toISOString().split('T')[0];
+    const nowIso = data.date || getLocalTodayIso();
     let createdMovementId: string | undefined = data.relatedMovementId;
 
     // Check if linked to an inventory product
@@ -274,7 +354,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const delta = data.type === 'income' ? -qty : qty;
         const newStock = Math.max(0, oldStock + delta);
 
-        let updatedBatches = targetProd.batches ? targetProd.batches.map((b) => ({ ...b })) : [];
+        const updatedBatches = targetProd.batches ? targetProd.batches.map((b) => ({ ...b })) : [];
         if (movType === 'in_purchase') {
           updatedBatches.push({
             id: `batch-${Date.now()}`,
@@ -285,7 +365,6 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             expiryDate: targetProd.expiryDate || null,
           });
         } else {
-          // FEFO deduction
           let toDeduct = qty;
           if (updatedBatches.length > 0) {
             updatedBatches.sort((a, b) => {
@@ -343,6 +422,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const newTrx: Transaction = {
       ...data,
+      date: nowIso,
       id: trxId,
       relatedMovementId: createdMovementId,
       createdAt: nowReadable,
@@ -379,11 +459,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addStockMovement = (movement: Omit<StockMovement, 'id' | 'createdAt'>): StockMovement => {
     const movId = `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const nowReadable = new Date().toLocaleString('id-ID');
-    const nowIso = new Date().toISOString().split('T')[0];
+    const nowIso = getLocalTodayIso();
 
     let linkedTrxId: string | undefined = movement.relatedTransactionId;
 
-    // Automatically update physical product inventory & FEFO batches
     const matchedProduct = products.find((p) => p.id === movement.productId);
     if (matchedProduct) {
       const delta = movement.quantityDelta;
@@ -391,7 +470,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newStock = Math.max(0, oldStock + delta);
       const isRestock = movement.type === 'in_purchase';
 
-      let updatedBatches = matchedProduct.batches ? matchedProduct.batches.map((b) => ({ ...b })) : [];
+      const updatedBatches = matchedProduct.batches ? matchedProduct.batches.map((b) => ({ ...b })) : [];
       if (isRestock) {
         updatedBatches.push({
           id: `batch-${Date.now()}`,
@@ -402,7 +481,6 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           batchCode: movement.batchCode || formatBatchName(nowIso),
         });
       } else {
-        // FEFO deduction
         let remainingToDeduct = Math.abs(delta);
         if (updatedBatches.length > 0) {
           updatedBatches.sort((a, b) => {
@@ -421,7 +499,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      const earliestExp = getActiveProductExpiry(updatedBatches, movement.batchExpiry || matchedProduct.expiryDate);
+      const earliestExp = getActiveProductExpiry(
+        updatedBatches,
+        movement.batchExpiry || matchedProduct.expiryDate
+      );
       updateProduct(matchedProduct.id, {
         currentStock: newStock,
         batches: updatedBatches,
@@ -430,7 +511,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         purchaseDate: isRestock ? nowIso : matchedProduct.purchaseDate,
       });
 
-      // Automatically sync with Buku Kas (Transactions) if financialAmount > 0 and no transaction already linked
+      // Sync with Buku Kas if financialAmount > 0 and no transaction already linked
       if (movement.financialAmount && movement.financialAmount > 0 && !linkedTrxId) {
         const trxId = `trx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         linkedTrxId = trxId;
@@ -440,12 +521,12 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           id: trxId,
           type: isExpense ? 'expense' : 'income',
           amount: movement.financialAmount,
-          category: isExpense ? (matchedProduct.category || 'Bahan Baku & Dapur') : 'Penjualan',
-          description: movement.notes || (
-            isExpense
+          category: isExpense ? matchedProduct.category || 'Bahan Baku' : 'Penjualan',
+          description:
+            movement.notes ||
+            (isExpense
               ? `Kulakan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
-              : `Penjualan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`
-          ),
+              : `Penjualan ${matchedProduct.name} (${Math.abs(delta)} ${matchedProduct.unit})`),
           date: nowIso,
           inputMethod: 'manual',
           relatedProductId: matchedProduct.id,
@@ -496,7 +577,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const oldStock = target.currentStock;
     const newStock = Math.max(0, oldStock + delta);
-    const nowIso = new Date().toISOString().split('T')[0];
+    const nowIso = getLocalTodayIso();
     const financialVal = delta > 0 ? target.hppAmount * delta : target.sellingPrice * Math.abs(delta);
 
     addStockMovement({
@@ -520,7 +601,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Human-In-The-Loop Draft Execution
   const applyConfirmationDraft = (draft: ConfirmationDraft) => {
-    const nowIso = new Date().toISOString().split('T')[0];
+    const nowIso = getLocalTodayIso();
     const nowReadable = new Date().toLocaleString('id-ID');
 
     // 0. Process Category & Subcategory Changes
@@ -551,6 +632,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updatedProducts = [...products];
 
     draft.stockChanges.forEach((change) => {
+      if (change.category && change.category.trim()) {
+        addCategory(change.category.trim());
+      }
+
       let matchedIndex = -1;
       if (change.productId) {
         matchedIndex = updatedProducts.findIndex((p) => p.id === change.productId);
@@ -561,15 +646,12 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (matchedIndex >= 0) {
-        // Existing Product update
         const existing = updatedProducts[matchedIndex];
         const oldStock = existing.currentStock;
         const newStock = Math.max(0, oldStock + change.quantityDelta);
 
-        // Multi-batch expiry tracking (FEFO)
         let updatedBatches = [...(existing.batches || [])];
         if (change.quantityDelta > 0) {
-          // New restock batch with user-preferred format: "Batch 27 Oktober 2026"
           updatedBatches.push({
             id: `batch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             batchCode: formatBatchName(nowIso),
@@ -579,7 +661,6 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             costPerUnit: change.pricePerUnit || existing.hppAmount,
           });
         } else if (change.quantityDelta < 0) {
-          // Deplete oldest batches first
           let toDeduct = Math.abs(change.quantityDelta);
           updatedBatches = updatedBatches
             .map((b) => {
@@ -596,8 +677,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             .filter((b) => b.quantity > 0);
         }
 
-        // Determine earliest active expiry date strictly from batches with stock remaining (> 0)
-        const earliestExpiry = getActiveProductExpiry(updatedBatches, change.expiryDate || existing.expiryDate);
+        const earliestExpiry = getActiveProductExpiry(
+          updatedBatches,
+          change.expiryDate || existing.expiryDate
+        );
 
         updatedProducts[matchedIndex] = {
           ...existing,
@@ -624,22 +707,23 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           stockAfter: newStock,
           batchCode: change.quantityDelta > 0 ? formatBatchName(nowIso) : undefined,
           batchExpiry: earliestExpiry,
-          financialAmount: change.quantityDelta > 0
-            ? (change.pricePerUnit || existing.hppAmount) * change.quantityDelta
-            : existing.sellingPrice * Math.abs(change.quantityDelta),
+          financialAmount:
+            change.quantityDelta > 0
+              ? (change.pricePerUnit || existing.hppAmount) * change.quantityDelta
+              : existing.sellingPrice * Math.abs(change.quantityDelta),
           source: draft.source.startsWith('mic') ? 'Voice Mic' : 'Pencatatan Draf Pintar',
           notes: draft.title || (change.quantityDelta > 0 ? 'Restok Masuk' : 'Penjualan Kasir'),
           createdAt: nowReadable,
         });
       } else if (change.isNewProduct || change.quantityDelta > 0) {
-        // Create new Product with initial batch
+        const unitCost = change.pricePerUnit || 0;
         const newProd: Product = {
           id: `prod-${Date.now()}-${Math.random()}`,
-          sku: `KSR-GEN-${Math.floor(100 + Math.random() * 900)}`,
+          sku: `KSR-${Math.floor(100 + Math.random() * 900)}`,
           name: change.productName,
-          category: change.category || 'Bahan Baku & Dapur',
+          category: change.category || 'Umum',
           location: change.location || 'Gudang Utama',
-          imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80',
+          imageUrl: '',
           currentStock: Math.max(0, change.quantityDelta),
           minStockAlert: 5,
           unit: change.unit || 'pcs',
@@ -654,16 +738,20 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     quantity: change.quantityDelta,
                     expiryDate: change.expiryDate || null,
                     receivedDate: nowIso,
-                    costPerUnit: change.pricePerUnit || 10000,
+                    costPerUnit: unitCost,
                   },
                 ]
               : [],
-          hppAmount: change.pricePerUnit || 10000,
+          hppAmount: unitCost,
           hppMethod: 'wholesale',
-          sellingPrice: Math.round((change.pricePerUnit || 10000) * 1.3),
+          sellingPrice: unitCost > 0 ? Math.round(unitCost * 1.3) : 0,
           createdAt: nowIso,
           updatedAt: nowIso,
         };
+
+        if (newProd.category && newProd.category.trim()) {
+          addCategory(newProd.category.trim());
+        }
 
         updatedProducts.unshift(newProd);
 
@@ -681,7 +769,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           stockAfter: newProd.currentStock,
           batchCode: formatBatchName(nowIso),
           batchExpiry: newProd.expiryDate,
-          financialAmount: (newProd.hppAmount || 10000) * newProd.currentStock,
+          financialAmount: unitCost * newProd.currentStock,
           source: draft.source.startsWith('mic') ? 'Voice Mic' : 'Pencatatan Draf Pintar',
           notes: draft.title || 'Barang Baru & Restok',
           createdAt: nowReadable,
@@ -689,7 +777,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
-    // Cross-link transactions and movements for complete data synchronization
+    // Cross-link transactions and movements
     if (newTransactionsToAdd.length === 1 && newMovements.length === 1) {
       newTransactionsToAdd[0].relatedMovementId = newMovements[0].id;
       newMovements[0].relatedTransactionId = newTransactionsToAdd[0].id;
@@ -723,17 +811,49 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateProfile = (updates: Partial<StoreProfile>) => {
-    setProfile((prev) => ({ ...prev, ...updates }));
+    setProfile((prev) => {
+      const next = { ...prev, ...updates };
+      if (
+        user &&
+        (updates.storeName !== undefined ||
+          updates.ownerName !== undefined ||
+          updates.businessCategory !== undefined)
+      ) {
+        updateAccountProfile({
+          storeName: updates.storeName ?? user.storeName,
+          name: updates.ownerName ?? user.name,
+          businessCategory: updates.businessCategory ?? user.businessCategory,
+        });
+      }
+      return next;
+    });
   };
 
   const resetToMockData = () => {
-    setProducts(INITIAL_PRODUCTS);
-    setTransactions(INITIAL_TRANSACTIONS);
-    setStockMovements(INITIAL_STOCK_MOVEMENTS);
-    setProfile(INITIAL_PROFILE);
-    setCategories(INITIAL_CATEGORIES);
+    const cleanProfile: StoreProfile = {
+      ...INITIAL_PROFILE,
+      storeName: user?.storeName || INITIAL_PROFILE.storeName,
+      ownerName: user?.name || INITIAL_PROFILE.ownerName,
+      businessCategory: user?.businessCategory || '',
+      monthlyTarget: 0,
+    };
+    setProducts([]);
+    setTransactions([]);
+    setStockMovements([]);
+    setProfile(cleanProfile);
+    setCategoryDefinitions([]);
+    setCategories(['Semua']);
     setActiveDraft(null);
-    localStorage.clear();
+
+    try {
+      localStorage.removeItem(storageKeys.PRODUCTS);
+      localStorage.removeItem(storageKeys.TRANSACTIONS);
+      localStorage.removeItem(storageKeys.MOVEMENTS);
+      localStorage.removeItem(storageKeys.PROFILE);
+      localStorage.removeItem(storageKeys.CATEGORY_DEFS);
+    } catch {
+      // ignore
+    }
   };
 
   // Computations
@@ -751,30 +871,35 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const todayProfit = todayIncome - todayExpense;
 
+  const currentMonthPrefix = todayIso.slice(0, 7);
+
   const monthIncome = useMemo(() => {
     return transactions
-      .filter((t) => t.type === 'income')
+      .filter((t) => t.type === 'income' && (t.date ? t.date.startsWith(currentMonthPrefix) : true))
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [transactions]);
+  }, [transactions, currentMonthPrefix]);
 
   const monthExpense = useMemo(() => {
     return transactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === 'expense' && (t.date ? t.date.startsWith(currentMonthPrefix) : true))
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [transactions]);
+  }, [transactions, currentMonthPrefix]);
 
   const criticalStockCount = useMemo(() => {
     return products.filter((p) => p.currentStock <= p.minStockAlert).length;
   }, [products]);
 
   const nearExpiryCount = useMemo(() => {
-    const today = new Date(todayIso);
+    const parts = todayIso.split('-').map(Number);
+    const today = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
     today.setHours(0, 0, 0, 0);
     return products.filter((p) => {
       if (!p.expiryDate) return false;
-      const exp = new Date(p.expiryDate);
+      const ep = p.expiryDate.split('-').map(Number);
+      if (ep.length !== 3) return false;
+      const exp = new Date(ep[0], ep[1] - 1, ep[2]);
       exp.setHours(0, 0, 0, 0);
-      const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.round((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       return diffDays <= 7;
     }).length;
   }, [products, todayIso]);
@@ -798,8 +923,6 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveDraft,
         applyConfirmationDraft,
         cancelConfirmationDraft,
-        selectedProductForPromo,
-        setSelectedProductForPromo,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -807,6 +930,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addCategory,
         addSubcategory,
         deleteCategory,
+        deleteSubcategory,
         addTransaction,
         updateTransaction,
         deleteTransaction,

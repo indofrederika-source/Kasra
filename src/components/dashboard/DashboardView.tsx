@@ -10,19 +10,16 @@ import {
   DollarSign,
   Package,
   AlertTriangle,
-  Clock,
   Mic,
   ScanLine,
   Plus,
-  Activity,
-  Calendar,
   ChevronDown,
   ChevronUp,
   Target,
-  ArrowRight,
   ShieldCheck,
   Wallet,
   PieChart,
+  Calculator,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -36,9 +33,30 @@ import {
 interface DashboardViewProps {
   onOpenVoice: () => void;
   onOpenScan: () => void;
+  onOpenCalculator?: () => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpenScan }) => {
+const COST_COLORS = [
+  'bg-lime-500',
+  'bg-amber-500',
+  'bg-slate-600',
+  'bg-sky-500',
+  'bg-emerald-500',
+  'bg-rose-500',
+];
+
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  onOpenVoice,
+  onOpenScan,
+  onOpenCalculator,
+}) => {
   const {
     products,
     transactions,
@@ -48,9 +66,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
     todayExpense,
     todayProfit,
     monthIncome,
-    monthExpense,
-    criticalStockCount,
-    nearExpiryCount,
     setActiveTab,
     setActiveDraft,
   } = useKasra();
@@ -65,7 +80,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
   const [chartRange, setChartRange] = useState<'7d' | '30d'>('7d');
 
   // Hover state on chart to display values in header without covering the bars
-  const [activeHoverData, setActiveHoverData] = useState<any>(null);
+  const [activeHoverData, setActiveHoverData] = useState<{
+    day: string;
+    masuk: number;
+    keluar: number;
+    laba: number;
+  } | null>(null);
 
   // Handle Omnibox quick NLP submit
   const handleOmniboxSubmit = (e: React.FormEvent) => {
@@ -76,14 +96,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
     setOmniboxText('');
   };
 
-  // Cumulative store cash balance
+  // Cumulative store cash balance (starts at Rp 0 when empty)
   const totalStoreBalance = useMemo(() => {
     return transactions.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : acc - t.amount), 0);
   }, [transactions]);
 
-  // Target bulanan calculation
-  const monthlyTarget = profile.monthlyTarget || 35000000;
-  const targetPercent = Math.min(100, Math.round((monthIncome / monthlyTarget) * 100));
+  // Target bulanan calculation (starts at 0 when empty)
+  const monthlyTarget = profile.monthlyTarget || 0;
+  const targetPercent =
+    monthlyTarget > 0 ? Math.min(100, Math.round((monthIncome / monthlyTarget) * 100)) : 0;
 
   // Dynamic cash flow chart computed from real transactions (7d & 30d)
   const chartData = useMemo(() => {
@@ -95,7 +116,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
     for (let i = count - 1; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       const isToday = i === 0;
       const label =
         chartRange === '7d'
@@ -138,6 +159,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
       detail: string;
     }> = [];
 
+    const now = new Date();
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
     products.forEach((p) => {
       // Low stock alerts
       if (p.currentStock <= p.minStockAlert) {
@@ -155,23 +179,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
 
       // Expiry alerts
       if (p.expiryDate) {
-        const exp = new Date(p.expiryDate);
-        const now = new Date();
-        const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const parts = p.expiryDate.split('-').map(Number);
+        if (parts.length === 3) {
+          const expTime = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+          const diffDays = Math.round((expTime - todayZero) / (1000 * 60 * 60 * 24));
 
-        if (diffDays <= 7) {
-          const isExpired = diffDays < 0;
-          alerts.push({
-            id: `expiry-${p.id}`,
-            productId: p.id,
-            productName: p.name,
-            type: 'expiry',
-            badgeLabel: isExpired ? 'KADALUARSA' : `${diffDays} HARI LAGI`,
-            badgeStyle: isExpired ? 'critical' : 'warning',
-            detail: isExpired
-              ? `Telah lewat kadaluarsa pada ${formatDateIndo(p.expiryDate)}`
-              : `Kadaluarsa pada ${formatDateIndo(p.expiryDate)} (segera gunakan atau beri promo diskon)`,
-          });
+          if (diffDays <= 7) {
+            const isExpired = diffDays < 0;
+            alerts.push({
+              id: `expiry-${p.id}`,
+              productId: p.id,
+              productName: p.name,
+              type: 'expiry',
+              badgeLabel: isExpired ? 'KADALUARSA' : diffDays === 0 ? 'HARI INI' : `${diffDays} HARI LAGI`,
+              badgeStyle: isExpired ? 'critical' : 'warning',
+              detail: isExpired
+                ? `Telah lewat kadaluarsa pada ${formatDateIndo(p.expiryDate)}`
+                : `Kadaluarsa pada ${formatDateIndo(p.expiryDate)} (prioritaskan pemakaian FEFO)`,
+            });
+          }
         }
       }
     });
@@ -179,47 +205,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
     return alerts;
   }, [products]);
 
-  // Display count based on expanded state
   const displayedAlerts = isAlertsExpanded ? allAlerts : allAlerts.slice(0, 5);
 
-  // Dynamic Cost Analysis by Category (Expanded)
+  // Dynamic Cost Analysis by Real Transaction Categories (0 when empty)
   const costAnalysis = useMemo(() => {
-    const catMap: Record<string, number> = {
-      'Bahan Baku & Dapur': 0,
-      'Kemasan & Cup': 0,
-      'Operasional & Utilitas': 0,
-      'Gaji & Upah': 0,
-      'Lain-lain': 0,
-    };
-
+    const catMap: Record<string, number> = {};
     let totalExpenseCalc = 0;
+
     transactions
       .filter((t) => t.type === 'expense')
       .forEach((t) => {
         totalExpenseCalc += t.amount;
-        if (t.category.includes('Bahan') || t.category.includes('Dapur')) {
-          catMap['Bahan Baku & Dapur'] += t.amount;
-        } else if (t.category.includes('Kemasan') || t.category.includes('Cup') || t.category.includes('Packaging')) {
-          catMap['Kemasan & Cup'] += t.amount;
-        } else if (t.category.includes('Gaji') || t.category.includes('Upah')) {
-          catMap['Gaji & Upah'] += t.amount;
-        } else if (t.category.includes('Operasional') || t.category.includes('Listrik') || t.category.includes('Utilitas')) {
-          catMap['Operasional & Utilitas'] += t.amount;
-        } else {
-          catMap['Lain-lain'] += t.amount;
-        }
+        const catName = t.category?.trim() || 'Lainnya';
+        catMap[catName] = (catMap[catName] || 0) + t.amount;
       });
 
-    const tot = totalExpenseCalc || 1;
+    if (totalExpenseCalc === 0) {
+      return { total: 0, items: [] };
+    }
+
+    const sortedEntries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+
     return {
       total: totalExpenseCalc,
-      items: [
-        { label: 'Bahan Baku & Dapur', amount: catMap['Bahan Baku & Dapur'], percent: Math.round((catMap['Bahan Baku & Dapur'] / tot) * 100), color: 'bg-lime-500' },
-        { label: 'Kemasan & Cup', amount: catMap['Kemasan & Cup'], percent: Math.round((catMap['Kemasan & Cup'] / tot) * 100), color: 'bg-amber-500' },
-        { label: 'Operasional & Utilitas', amount: catMap['Operasional & Utilitas'], percent: Math.round((catMap['Operasional & Utilitas'] / tot) * 100), color: 'bg-slate-500' },
-        { label: 'Gaji & Upah', amount: catMap['Gaji & Upah'], percent: Math.round((catMap['Gaji & Upah'] / tot) * 100), color: 'bg-sky-500' },
-        { label: 'Lain-lain', amount: catMap['Lain-lain'], percent: Math.round((catMap['Lain-lain'] / tot) * 100), color: 'bg-slate-300' },
-      ],
+      items: sortedEntries.map(([label, amount], idx) => ({
+        label,
+        amount,
+        percent: Math.round((amount / totalExpenseCalc) * 100),
+        color: COST_COLORS[idx % COST_COLORS.length],
+      })),
     };
   }, [transactions]);
 
@@ -235,7 +249,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
           <span className="text-emerald-700 font-bold">+{formatRupiah(masuk)}</span>
           <span className="text-rose-600 font-bold">-{formatRupiah(keluar)}</span>
           <span className="text-slate-500 font-semibold border-l border-slate-200 pl-2">
-            Laba: <span className={laba >= 0 ? 'text-slate-900 font-bold' : 'text-rose-600 font-bold'}>{formatRupiah(laba)}</span>
+            Laba:{' '}
+            <span className={laba >= 0 ? 'text-slate-900 font-bold' : 'text-rose-600 font-bold'}>
+              {formatRupiah(laba)}
+            </span>
           </span>
         </div>
       );
@@ -288,7 +305,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
 
       {/* 2. Main 12-Column Bento Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN (8 Cols): Chart, Statistics, and Antrean Peringatan Prioritas right underneath! */}
+        {/* LEFT COLUMN (8 Cols): Chart, Statistics, and Antrean Peringatan Prioritas right underneath */}
         <div className="lg:col-span-8 space-y-6">
           {/* Main Chart Card */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
@@ -296,9 +313,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               <div>
                 <span className="text-xs text-slate-500 font-medium block">Tren Arus Kas Toko</span>
                 <div className="text-2xl font-bold text-slate-900 tracking-tight font-mono mt-0.5">
-                  {activeHoverData
-                    ? `${activeHoverData.day}: +${formatRupiah(activeHoverData.masuk)} / -${formatRupiah(activeHoverData.keluar)}`
-                    : `Arus Kas ${chartRange === '7d' ? '7 Hari Terakhir' : '30 Hari Terakhir'}`}
+                  {activeHoverData ? (
+                    <span className="inline-flex items-center gap-2 flex-wrap">
+                      <span>{activeHoverData.day}:</span>
+                      <span className="text-emerald-600">+{formatRupiah(activeHoverData.masuk)}</span>
+                      <span className="text-slate-300">/</span>
+                      <span className="text-rose-600">-{formatRupiah(activeHoverData.keluar)}</span>
+                    </span>
+                  ) : (
+                    `Arus Kas ${chartRange === '7d' ? '7 Hari Terakhir' : '30 Hari Terakhir'}`
+                  )}
                 </div>
               </div>
 
@@ -308,7 +332,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                   <button
                     onClick={() => setChartRange('7d')}
                     className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                      chartRange === '7d' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'
+                      chartRange === '7d'
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
                     7 Hari
@@ -316,7 +342,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                   <button
                     onClick={() => setChartRange('30d')}
                     className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                      chartRange === '30d' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'
+                      chartRange === '30d'
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >
                     30 Hari
@@ -326,18 +354,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                 {/* Legend Indicators */}
                 <div className="hidden sm:flex items-center gap-3 text-[11px] font-medium text-slate-600">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                     <span>Masuk</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                     <span>Keluar</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Recharts Bar Chart: Pinned Tooltip at y: 0 so it NEVER blocks the bars! */}
+            {/* Recharts Bar Chart: Pinned Tooltip at y: 0 so it NEVER blocks the bars */}
             <div className="h-64 sm:h-72 w-full pt-1 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -360,11 +388,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                   <YAxis
                     stroke="#94a3b8"
                     fontSize={10}
-                    tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}jt` : `${v / 1000}k`)}
+                    tickFormatter={(v) =>
+                      v === 0
+                        ? '0'
+                        : v >= 1000000
+                        ? `${(v / 1000000).toFixed(1)}jt`
+                        : v >= 1000
+                        ? `${Math.round(v / 1000)}k`
+                        : `${v}`
+                    }
                     tickLine={false}
                     axisLine={false}
                   />
-                  {/* Tooltip positioned at top (y: 0) to avoid obstructing bar inspection */}
                   <Tooltip
                     cursor={{ fill: 'rgba(0, 0, 0, 0.03)' }}
                     position={{ y: 0 }}
@@ -372,14 +407,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                   />
                   <Bar
                     dataKey="masuk"
-                    fill="#84cc16"
+                    fill="#10b981"
                     radius={[8, 8, 0, 0]}
                     barSize={chartRange === '7d' ? 22 : 9}
                     background={{ fill: '#f8fafc', radius: 8 }}
                   />
                   <Bar
                     dataKey="keluar"
-                    fill="#cbd5e1"
+                    fill="#ef4444"
                     radius={[8, 8, 0, 0]}
                     barSize={chartRange === '7d' ? 22 : 9}
                     background={{ fill: '#f8fafc', radius: 8 }}
@@ -402,8 +437,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               <div className="text-xl font-bold text-slate-900 tracking-tight font-mono">
                 {formatRupiah(todayIncome)}
               </div>
-              <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                <span>↑ 14% dari rata-rata toko</span>
+              <div
+                className={`text-[11px] font-medium flex items-center gap-1 ${
+                  todayIncome > 0 ? 'text-emerald-600' : 'text-slate-400'
+                }`}
+              >
+                <span>
+                  {todayIncome > 0 ? 'Tercatat masuk hari ini' : 'Belum ada pemasukan hari ini'}
+                </span>
               </div>
             </div>
 
@@ -418,8 +459,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               <div className="text-xl font-bold text-slate-900 tracking-tight font-mono">
                 {formatRupiah(todayExpense)}
               </div>
-              <div className="text-[11px] text-slate-500">
-                Belanja bahan & operasional
+              <div className="text-[11px] text-slate-400">
+                {todayExpense > 0 ? 'Belanja bahan & operasional' : 'Belum ada pengeluaran'}
               </div>
             </div>
 
@@ -439,24 +480,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                 {formatRupiah(todayProfit)}
               </div>
               <div className="text-[11px] text-slate-500">
-                Margin: <span className="text-slate-900 font-semibold">{todayIncome > 0 ? Math.round((todayProfit / todayIncome) * 100) : 0}%</span>
+                Margin:{' '}
+                <span className="text-slate-900 font-semibold">
+                  {todayIncome > 0 ? Math.round((todayProfit / todayIncome) * 100) : 0}%
+                </span>
               </div>
             </div>
 
             {/* Card 4: Target Bulanan */}
-            <div className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs">
+            <div
+              onClick={() => setActiveTab('settings')}
+              className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 space-y-2.5 transition-colors shadow-2xs cursor-pointer"
+              title="Klik untuk mengatur target bulanan toko"
+            >
               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                 <span>Target Bulanan</span>
                 <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                   <Target className="w-3.5 h-3.5" />
                 </div>
               </div>
-              <div className="flex items-baseline justify-between font-mono">
+              <div className="flex items-baseline justify-between font-mono gap-1">
                 <span className="text-xl font-bold text-slate-900 tracking-tight">
                   {targetPercent}%
                 </span>
-                <span className="text-[11px] text-slate-500 truncate max-w-[90px]">
-                  {formatRupiah(monthIncome)}
+                <span className="text-[10px] text-slate-500 truncate">
+                  {monthlyTarget > 0 ? `Target: ${formatRupiah(monthlyTarget)}` : 'Target: Rp 0'}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -468,7 +516,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
             </div>
           </div>
 
-          {/* ANTREAN PERINGATAN PRIORITAS - DIRECTLY UNDERNEATH STATISTICS (NO DEAD SPACE) */}
+          {/* ANTREAN PERINGATAN PRIORITAS - DIRECTLY UNDERNEATH STATISTICS */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -484,8 +532,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                   onClick={() => setIsAlertsExpanded(!isAlertsExpanded)}
                   className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
                 >
-                  <span>{isAlertsExpanded ? 'Tampilkan Lebih Sedikit' : `Lihat Semua (${allAlerts.length})`}</span>
-                  {isAlertsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  <span>
+                    {isAlertsExpanded ? 'Tampilkan Lebih Sedikit' : `Lihat Semua (${allAlerts.length})`}
+                  </span>
+                  {isAlertsExpanded ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
                 </button>
               )}
             </div>
@@ -514,7 +568,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                         {alert.badgeLabel}
                       </span>
                     </div>
-                    <div className={`text-[11px] ${alert.badgeStyle === 'critical' ? 'text-rose-700' : 'text-amber-800'}`}>
+                    <div
+                      className={`text-[11px] ${
+                        alert.badgeStyle === 'critical' ? 'text-rose-700' : 'text-amber-800'
+                      }`}
+                    >
                       {alert.detail}
                     </div>
                   </div>
@@ -528,17 +586,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               {allAlerts.length === 0 && (
                 <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500 space-y-1">
                   <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto" />
-                  <div className="font-semibold text-slate-900">Kondisi Stok & Kedaluwarsa Aman</div>
-                  <p>Tidak ada barang yang habis atau mendekati tanggal batas kedaluwarsa.</p>
+                  <div className="font-semibold text-slate-900">Belum Ada Peringatan (0)</div>
+                  <p>Tidak ada barang yang kritis atau mendekati tanggal kedaluwarsa.</p>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN (4 Cols): Sleek Saldo Tersedia, Quick Actions, and Riwayat Transaksi */}
+        {/* RIGHT COLUMN (4 Cols): Saldo Tersedia, Quick Actions, and Riwayat Transaksi */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Card: Saldo Tersedia (Clean Minimalist Dark Obsidian Card - No Green, No Fake Credit Card Clutter) */}
+          {/* Card: Saldo Tersedia */}
           <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-md text-white space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -548,16 +606,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             </div>
 
-            <div className="space-y-1 py-1">
+            <div className="space-y-1 pt-1">
               <span className="text-xs text-slate-400 font-mono">Saldo Tersedia</span>
               <div className="text-3xl font-extrabold font-mono tracking-tight text-white">
                 {formatRupiah(totalStoreBalance)}
               </div>
             </div>
-
-            <p className="text-[11px] text-slate-400 border-t border-slate-850 pt-3 leading-relaxed">
-              Arus likuiditas siap untuk operasional toko dan transaksi kasir.
-            </p>
           </div>
 
           {/* Quick Actions (4 Buttons) */}
@@ -574,7 +628,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                 <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
                   <Mic className="w-3.5 h-3.5" />
                 </div>
-                <span>Bicara Kasir</span>
+                <span>Bicara</span>
               </button>
 
               <button
@@ -606,13 +660,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
                 </div>
                 <span>Gudang</span>
               </button>
+
+              {onOpenCalculator && (
+                <button
+                  onClick={onOpenCalculator}
+                  className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100/90 text-slate-800 border border-slate-200 text-xs font-semibold transition-all group cursor-pointer shadow-2xs"
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                    <Calculator className="w-3.5 h-3.5" />
+                  </div>
+                  <span>Buka Kalkulator Cepat</span>
+                </button>
+              )}
             </div>
           </div>
 
           {/* Riwayat Kasir Terkini */}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm space-y-3.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">Riwayat Kasir Terkini</span>
+              <span className="text-xs font-bold text-slate-900">
+                Riwayat Kasir Terkini ({transactions.length})
+              </span>
               <button
                 onClick={() => setActiveTab('cash')}
                 className="text-[11px] text-slate-500 hover:text-slate-900 font-semibold transition-colors cursor-pointer"
@@ -621,42 +689,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               </button>
             </div>
 
-            <div className="space-y-2">
-              {transactions.slice(0, 5).map((trx) => (
-                <div
-                  key={trx.id}
-                  onClick={() => setActiveTab('cash')}
-                  className="p-2.5 rounded-2xl bg-slate-50/70 hover:bg-slate-100/80 border border-slate-100 flex items-center justify-between gap-3 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
+            {transactions.length === 0 ? (
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 text-center text-xs text-slate-400 space-y-1">
+                <div className="font-semibold text-slate-600">Belum Ada Riwayat Kasir (0)</div>
+                <p className="text-[11px]">Transaksi masuk & keluar akan tampil di sini.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {transactions.slice(0, 5).map((trx) => (
+                  <div
+                    key={trx.id}
+                    onClick={() => setActiveTab('cash')}
+                    className="p-2.5 rounded-2xl bg-slate-50/70 hover:bg-slate-100/80 border border-slate-100 flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          trx.type === 'income'
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'bg-rose-50 text-rose-600'
+                        }`}
+                      >
+                        {trx.type === 'income' ? (
+                          <TrendingUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <TrendingDown className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-900 truncate">
+                          {trx.description}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
+                          {trx.date} • {trx.category}
+                        </div>
+                      </div>
+                    </div>
+
                     <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        trx.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                      className={`text-xs font-bold font-mono shrink-0 ${
+                        trx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
                       }`}
                     >
-                      {trx.type === 'income' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-900 truncate">{trx.description}</div>
-                      <div className="text-[10px] text-slate-400 font-mono truncate">{trx.date} • {trx.category}</div>
+                      {trx.type === 'income'
+                        ? `+${formatRupiah(trx.amount)}`
+                        : `-${formatRupiah(trx.amount)}`}
                     </div>
                   </div>
-
-                  <div
-                    className={`text-xs font-bold font-mono shrink-0 ${
-                      trx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                    }`}
-                  >
-                    {trx.type === 'income' ? `+${formatRupiah(trx.amount)}` : `-${formatRupiah(trx.amount)}`}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 3. FULL-WIDTH EXPANDED CARD: ALOKASI BIAYA TOKO (Perluas & Rinci) */}
+      {/* 3. FULL-WIDTH EXPANDED CARD: ALOKASI BIAYA TOKO */}
       <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div>
@@ -665,7 +752,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
               <h3 className="text-sm font-bold text-slate-900">Alokasi & Struktur Biaya Toko</h3>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Rincian proporsi pengeluaran operasional, kulakan bahan baku, kemasan, dan biaya usaha
+              Rincian proporsi pengeluaran berdasarkan kategori transaksi keluar toko
             </p>
           </div>
 
@@ -677,37 +764,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onOpenVoice, onOpe
           </div>
         </div>
 
-        {/* Large Segmented Multi-Color Bar */}
+        {/* Segmented Multi-Color Bar (0% empty neutral bar when total === 0) */}
         <div className="space-y-2">
           <div className="w-full h-4 rounded-full overflow-hidden flex bg-slate-100 p-0.5 gap-1 shadow-inner">
             {costAnalysis.items.map((item, idx) => (
               <div
                 key={idx}
                 className={`${item.color} h-full rounded-full transition-all duration-500`}
-                style={{ width: `${Math.max(4, item.percent)}%` }}
+                style={{ width: `${Math.max(3, item.percent)}%` }}
                 title={`${item.label}: ${formatRupiah(item.amount)} (${item.percent}%)`}
               />
             ))}
           </div>
         </div>
 
-        {/* Detailed Breakdown Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
-          {costAnalysis.items.map((item, idx) => (
-            <div key={idx} className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className={`w-2.5 h-2.5 rounded-full ${item.color} shrink-0`} />
-                  <span className="text-xs font-bold text-slate-900 truncate">{item.label}</span>
+        {/* Detailed Breakdown Grid or Clean Zero State */}
+        {costAnalysis.items.length === 0 ? (
+          <div className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/70 text-center text-xs text-slate-500">
+            Belum ada pengeluaran tercatat (<span className="font-mono font-semibold text-slate-700">Rp 0</span>). Struktur alokasi biaya otomatis terisi saat Anda mencatat transaksi pengeluaran.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+            {costAnalysis.items.map((item, idx) => (
+              <div
+                key={idx}
+                className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className={`w-2.5 h-2.5 rounded-full ${item.color} shrink-0`} />
+                    <span className="text-xs font-bold text-slate-900 truncate">{item.label}</span>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-900">{item.percent}%</span>
                 </div>
-                <span className="text-xs font-mono font-bold text-slate-900">{item.percent}%</span>
+                <div className="text-xs font-mono font-semibold text-slate-600">
+                  {formatRupiah(item.amount)}
+                </div>
               </div>
-              <div className="text-xs font-mono font-semibold text-slate-600">
-                {formatRupiah(item.amount)}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

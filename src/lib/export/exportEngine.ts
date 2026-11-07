@@ -13,8 +13,13 @@ export async function exportToExcel(
   transactions: Transaction[],
   products: Product[]
 ) {
+  const storeTitle = (profile.storeName || 'Toko Usaha').trim();
+  const ownerLabel = (profile.ownerName || '-').trim();
+  const addressLabel = (profile.address || '-').trim();
+  const phoneLabel = (profile.phone || '-').trim();
+
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = `KASRA - ${profile.storeName}`;
+  workbook.creator = `KASRA - ${storeTitle}`;
   workbook.created = new Date();
 
   // 1. Sheet: Laporan Keuangan (Cashflow)
@@ -23,7 +28,7 @@ export async function exportToExcel(
   // Header Title
   cashSheet.mergeCells('A1:F1');
   const titleCell = cashSheet.getCell('A1');
-  titleCell.value = `LAPORAN ARUS KAS & KEUANGAN - ${profile.storeName.toUpperCase()}`;
+  titleCell.value = `LAPORAN ARUS KAS & KEUANGAN - ${storeTitle.toUpperCase()}`;
   titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   titleCell.fill = {
     type: 'pattern',
@@ -34,7 +39,7 @@ export async function exportToExcel(
   cashSheet.getRow(1).height = 30;
 
   cashSheet.addRow([
-    `Dicetak pada: ${new Date().toLocaleDateString('id-ID')} | Pemilik: ${profile.ownerName}`,
+    `Dicetak pada: ${new Date().toLocaleDateString('id-ID')} | Pemilik: ${ownerLabel}`,
   ]);
   cashSheet.addRow([]); // Blank row
 
@@ -111,7 +116,7 @@ export async function exportToExcel(
   const stockSheet = workbook.addWorksheet('Inventaris & Nilai Stok');
   stockSheet.mergeCells('A1:H1');
   const stockTitle = stockSheet.getCell('A1');
-  stockTitle.value = `REKAPITULASI INVENTARIS GUDANG - ${profile.storeName.toUpperCase()}`;
+  stockTitle.value = `REKAPITULASI INVENTARIS GUDANG - ${storeTitle.toUpperCase()}`;
   stockTitle.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   stockTitle.fill = {
     type: 'pattern',
@@ -121,7 +126,7 @@ export async function exportToExcel(
   stockTitle.alignment = { horizontal: 'center', vertical: 'middle' };
   stockSheet.getRow(1).height = 30;
 
-  stockSheet.addRow([`Alamat: ${profile.address} | Telp: ${profile.phone}`]);
+  stockSheet.addRow([`Alamat: ${addressLabel} | Telp: ${phoneLabel}`]);
   stockSheet.addRow([]);
 
   const stockHeaderRow = stockSheet.addRow([
@@ -200,7 +205,7 @@ export async function exportToExcel(
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `Laporan_Keuangan_Stok_${profile.storeName.replace(/\s+/g, '_')}_${new Date()
+  anchor.download = `Laporan_Keuangan_Stok_${storeTitle.replace(/\s+/g, '_')}_${new Date()
     .toISOString()
     .split('T')[0]}.xlsx`;
   anchor.click();
@@ -218,19 +223,25 @@ export function exportToOfficialPdf(
 ) {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
+  const storeTitle = (profile.storeName || 'Toko Usaha').trim();
+  const categoryLabel = (profile.businessCategory || '-').trim();
+  const addressLabel = (profile.address || '-').trim();
+  const phoneLabel = (profile.phone || '-').trim();
+  const bankLabel = (profile.bankAccount || '-').trim();
+  const ownerLabel = (profile.ownerName || 'Pemilik Usaha').trim();
 
   // 1. Official Store Header (Kop Surat)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(profile.storeName.toUpperCase(), 14, 18);
+  doc.text(storeTitle.toUpperCase(), 14, 18);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105); // slate-600
-  doc.text(`Bidang Usaha: ${profile.businessCategory}`, 14, 23);
-  doc.text(`Alamat: ${profile.address}`, 14, 28);
-  doc.text(`Kontak: ${profile.phone} | Rekening: ${profile.bankAccount}`, 14, 33);
+  doc.text(`Bidang Usaha: ${categoryLabel}`, 14, 23);
+  doc.text(`Alamat: ${addressLabel}`, 14, 28);
+  doc.text(`Kontak: ${phoneLabel} | Rekening: ${bankLabel}`, 14, 33);
 
   // Decorative divider line
   doc.setDrawColor(30, 41, 59);
@@ -279,14 +290,17 @@ export function exportToOfficialPdf(
   doc.text(`Total Nilai Aset Stok Terdata: ${formatRupiah(totalStockAsset)} (${products.length} Jenis Barang)`, 18, 70);
 
   // Table of Transactions
-  const tableRows = transactions.slice(0, 15).map((t, idx) => [
-    idx + 1,
-    t.date,
-    t.category,
-    t.description,
-    t.type === 'income' ? 'Masuk' : 'Keluar',
-    t.type === 'income' ? `+${formatRupiah(t.amount)}` : `-${formatRupiah(t.amount)}`,
-  ]);
+  const tableRows =
+    transactions.length > 0
+      ? transactions.slice(0, 25).map((t, idx) => [
+          idx + 1,
+          t.date,
+          t.category,
+          t.description,
+          t.type === 'income' ? 'Masuk' : 'Keluar',
+          t.type === 'income' ? `+${formatRupiah(t.amount)}` : `-${formatRupiah(t.amount)}`,
+        ])
+      : [['-', '-', '-', 'Belum ada transaksi tercatat', '-', 'Rp 0']];
 
   autoTable(doc, {
     startY: 80,
@@ -320,20 +334,20 @@ export function exportToOfficialPdf(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Depok, ${formatDateIndo(new Date().toISOString())}`, pageWidth - 60, finalY);
-    doc.text('Pemilik Usaha / Penanggung Jawab,', pageWidth - 60, finalY + 5);
+    doc.text(`${formatDateIndo(new Date().toISOString())}`, pageWidth - 65, finalY);
+    doc.text('Pemilik Usaha / Penanggung Jawab,', pageWidth - 65, finalY + 5);
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(`( ${profile.ownerName} )`, pageWidth - 60, finalY + 28);
+    doc.text(`( ${ownerLabel} )`, pageWidth - 65, finalY + 28);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.text(profile.storeName, pageWidth - 60, finalY + 33);
+    doc.text(storeTitle, pageWidth - 65, finalY + 33);
   }
 
   // Trigger download
   doc.save(
-    `Laporan_Resmi_${profile.storeName.replace(/\s+/g, '_')}_${new Date()
+    `Laporan_Resmi_${storeTitle.replace(/\s+/g, '_')}_${new Date()
       .toISOString()
       .split('T')[0]}.pdf`
   );

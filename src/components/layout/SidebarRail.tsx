@@ -3,12 +3,12 @@
 import React from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
 import { TabType } from '@/types';
+import { KasraLogo } from '@/components/ui/KasraLogo';
 import {
   LayoutDashboard,
   Wallet,
   Package,
   Activity,
-  Megaphone,
   Settings,
   HelpCircle,
 } from 'lucide-react';
@@ -52,11 +52,6 @@ export const SidebarRail: React.FC = () => {
       icon: Activity,
     },
     {
-      id: 'promo',
-      label: 'Promosi Studio',
-      icon: Megaphone,
-    },
-    {
       id: 'settings',
       label: 'Pengaturan & Toko',
       icon: Settings,
@@ -68,15 +63,13 @@ export const SidebarRail: React.FC = () => {
       {/* Desktop Left Icon Rail (ACRU Style - Clean Light Minimalist) */}
       <aside className="hidden md:flex flex-col w-[76px] bg-white border-r border-slate-200/80 py-6 px-3 shrink-0 justify-between items-center select-none z-30 shadow-[1px_0_10px_rgba(0,0,0,0.02)]">
         <div className="flex flex-col items-center gap-7 w-full">
-          {/* Brand Mark (ACRU Style - Clean Slate Square with Lime Monogram) */}
+          {/* Brand Mark (Official KASRA White Monogram) */}
           <div
             onClick={() => setActiveTab('dashboard')}
             className="w-11 h-11 rounded-2xl bg-slate-900 border border-slate-800 hover:bg-slate-800 flex items-center justify-center cursor-pointer transition-all shadow-sm group"
-            title={`${profile.storeName} — KASRA Workspace`}
+            title={`${profile.storeName || 'Toko'} — KASRA Workspace`}
           >
-            <span className="text-lime-400 font-black text-lg tracking-tight font-sans group-hover:scale-110 transition-transform select-none">
-              K
-            </span>
+            <KasraLogo className="w-6 h-6 text-white group-hover:scale-110 transition-transform select-none" />
           </div>
 
           {/* Navigation Icon List */}

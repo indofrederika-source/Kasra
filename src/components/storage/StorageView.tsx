@@ -65,6 +65,14 @@ export const LOCATION_PRESETS = [
   'Dapur Utama',
 ];
 
+function getLocalTodayStr(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 interface StorageViewProps {
   onOpenVoice: () => void;
   onOpenScan: () => void;
@@ -79,6 +87,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     categoryDefinitions,
     addCategory,
     addSubcategory,
+    deleteCategory,
+    deleteSubcategory,
+    addTransaction,
     totalAssetValue,
     criticalStockCount,
     nearExpiryCount,
@@ -112,7 +123,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   const [movLocation, setMovLocation] = useState('Gudang Utama');
   const [movSource, setMovSource] = useState('Input Manual Gudang');
   const [movNotes, setMovNotes] = useState('');
-  const [movDate, setMovDate] = useState(new Date().toISOString().split('T')[0]);
+  const [movDate, setMovDate] = useState(() => getLocalTodayStr());
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,9 +138,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [catModalType, setCatModalType] = useState<'main' | 'sub'>('main');
   const [newCatName, setNewCatName] = useState('');
-  const [targetMainForSub, setTargetMainForSub] = useState(
-    categoryDefinitions[0]?.name || 'Bahan Baku & Dapur'
-  );
+  const [targetMainForSub, setTargetMainForSub] = useState('');
 
   // Quick Change Image Modal
   const [quickImageTarget, setQuickImageTarget] = useState<Product | null>(null);
@@ -137,6 +146,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   // Add / Edit Product Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [recordInitialStockToCash, setRecordInitialStockToCash] = useState(true);
 
   // Custom Delete Confirm Modal State
   const [deleteTargetProduct, setDeleteTargetProduct] = useState<Product | null>(null);
@@ -148,7 +158,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   const [formSubcategory, setFormSubcategory] = useState('');
   const [formLocation, setFormLocation] = useState('');
   const [formUnit, setFormUnit] = useState<ProductUnit | string>('');
-  const [formImageUrl, setFormImageUrl] = useState(UMKM_IMAGE_PRESETS[0].url);
+  const [formImageUrl, setFormImageUrl] = useState('');
   const [formCurrentStock, setFormCurrentStock] = useState('');
   const [formMinStock, setFormMinStock] = useState('');
   const [formPurchaseDate, setFormPurchaseDate] = useState('');
@@ -274,17 +284,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
   const handleOpenAddModal = () => {
     setEditingProductId(null);
+    setRecordInitialStockToCash(true);
     setFormName('');
     const skuCode = `KSR-${Math.floor(100 + Math.random() * 900)}`;
     setFormSku(skuCode);
-    setFormCategory('');
-    setFormSubcategory('');
+    setFormCategory(selectedMainCategory !== 'Semua' ? selectedMainCategory : '');
+    setFormSubcategory(selectedSubcategory !== 'Semua' ? selectedSubcategory : '');
     setFormLocation('');
     setFormUnit('');
-    setFormImageUrl(UMKM_IMAGE_PRESETS[0].url);
+    setFormImageUrl('');
     setFormCurrentStock('');
     setFormMinStock('');
-    setFormPurchaseDate('');
+    setFormPurchaseDate(getLocalTodayStr());
     setFormExpiryDate(null);
     setFormBatches([]);
     setShowAddBatchRow(false);
@@ -360,14 +371,14 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
     const productPayload = {
       name: formName.trim(),
       sku: formSku.trim() || `KSR-${Math.floor(100 + Math.random() * 900)}`,
-      category: formCategory.trim() || 'Lainnya',
+      category: formCategory.trim() || 'Umum',
       subcategory: formSubcategory.trim(),
       location: formLocation.trim() || 'Gudang Utama',
       unit: (formUnit.trim() || 'pcs') as ProductUnit,
-      imageUrl: formImageUrl.trim() || UMKM_IMAGE_PRESETS[0].url,
+      imageUrl: formImageUrl.trim(),
       currentStock: finalStock,
       minStockAlert: Math.max(0, parseInt(formMinStock) || 0),
-      purchaseDate: formPurchaseDate || new Date().toISOString().split('T')[0],
+      purchaseDate: formPurchaseDate || getLocalTodayStr(),
       expiryDate: earliestBatchExpiry || undefined,
       batches: formBatches.length > 0 ? formBatches : undefined,
       hppAmount: computedHpp,
@@ -380,6 +391,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
       updateProduct(editingProductId, productPayload);
     } else {
       addProduct(productPayload);
+      if (recordInitialStockToCash && finalStock > 0 && computedHpp > 0) {
+        addTransaction({
+          date: productPayload.purchaseDate,
+          type: 'expense',
+          amount: finalStock * computedHpp,
+          category: productPayload.category,
+          description: `Kulakan Stok Awal: ${productPayload.name} (${finalStock} ${productPayload.unit})`,
+          inputMethod: 'manual',
+        });
+      }
     }
 
     setIsProductModalOpen(false);
@@ -389,7 +410,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
   const handleOpenAddMovement = (presetProd?: Product) => {
     setEditingMovement(null);
     const target = presetProd || products[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalTodayStr();
     setMovProductId(target?.id || '');
     setMovType('in_purchase');
     setMovQty('1');
@@ -668,7 +689,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs"
           >
             <Mic className="w-3.5 h-3.5 text-slate-500" />
-            <span>Bicara Stok</span>
+            <span>Bicara</span>
           </button>
         </div>
       </div>
@@ -794,27 +815,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   <Layers className="w-3.5 h-3.5 text-slate-400" />
                   <span>Kategori Utama:</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCatModalType('main');
-                    setNewCatName('');
-                    setIsCatModalOpen(true);
-                  }}
-                  className="text-[10px] text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors font-medium"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Tambah Kategori Utama</span>
-                </button>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedMainCategory('Semua');
                     setSelectedSubcategory('Semua');
                   }}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+                  className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
                     selectedMainCategory === 'Semua'
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
@@ -825,91 +835,157 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                 {categoryDefinitions.map((cat) => {
                   const count = products.filter((p) => p.category === cat.name).length;
+                  const isActive = selectedMainCategory === cat.name;
                   return (
-                    <button
+                    <div
                       key={cat.id}
-                      onClick={() => {
-                        setSelectedMainCategory(cat.name);
-                        setSelectedSubcategory('Semua');
-                      }}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
-                        selectedMainCategory === cat.name
+                      className={`inline-flex items-center gap-1 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+                        isActive
                           ? 'bg-slate-900 text-white shadow-xs'
                           : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
                       }`}
                     >
-                      {cat.name} ({count})
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMainCategory(cat.name);
+                          setSelectedSubcategory('Semua');
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {cat.name} ({count})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (selectedMainCategory === cat.name) {
+                            setSelectedMainCategory('Semua');
+                            setSelectedSubcategory('Semua');
+                          }
+                          deleteCategory(cat.id);
+                        }}
+                        className={`p-0.5 rounded-full transition-colors cursor-pointer ${
+                          isActive
+                            ? 'text-slate-300 hover:text-white hover:bg-slate-700'
+                            : 'text-slate-400 hover:text-rose-600 hover:bg-slate-200'
+                        }`}
+                        title={`Hapus kategori ${cat.name}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   );
                 })}
+
+                {/* Direct Right-Side Add Category Pill Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatModalType('main');
+                    setNewCatName('');
+                    setIsCatModalOpen(true);
+                  }}
+                  className="px-3 py-1 rounded-full text-xs font-semibold shrink-0 border border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 hover:border-slate-400 flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Kategori</span>
+                </button>
               </div>
             </div>
 
-            {/* TIER 2: Sub-Kategori Chips (Dynamically based on Main Category) */}
-            {availableSubcategoriesForFilter.length > 0 && (
-              <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span className="flex items-center gap-1 font-semibold uppercase tracking-wider">
-                    <Tag className="w-3 h-3 text-amber-500" />
-                    <span>
-                      Sub-Kategori {selectedMainCategory !== 'Semua' ? `(${selectedMainCategory})` : ''}:
-                    </span>
+            {/* TIER 2: Sub-Kategori Chips (Always visible with Semua Sub + Add Sub-Kategori on the right) */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <span className="flex items-center gap-1 font-semibold uppercase tracking-wider">
+                  <Tag className="w-3 h-3 text-amber-500" />
+                  <span>
+                    Sub-Kategori {selectedMainCategory !== 'Semua' ? `(${selectedMainCategory})` : ''}:
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCatModalType('sub');
-                      setTargetMainForSub(
-                        selectedMainCategory !== 'Semua'
-                          ? selectedMainCategory
-                          : categoryDefinitions[0]?.name || 'Bahan Baku'
-                      );
-                      setNewCatName('');
-                      setIsCatModalOpen(true);
-                    }}
-                    className="text-[10px] text-slate-500 hover:text-slate-900 flex items-center gap-1 font-medium"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Tambah Sub-Kategori</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  <button
-                    onClick={() => setSelectedSubcategory('Semua')}
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors ${
-                      selectedSubcategory === 'Semua'
-                        ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
-                    }`}
-                  >
-                    Semua Sub
-                  </button>
-
-                  {availableSubcategoriesForFilter.map((sub, idx) => {
-                    const subCount = products.filter(
-                      (p) =>
-                        p.subcategory === sub &&
-                        (selectedMainCategory === 'Semua' || p.category === selectedMainCategory)
-                    ).length;
-
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedSubcategory(sub)}
-                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors ${
-                          selectedSubcategory === sub
-                            ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                            : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
-                        }`}
-                      >
-                        {sub} {subCount > 0 ? `(${subCount})` : ''}
-                      </button>
-                    );
-                  })}
-                </div>
+                </span>
               </div>
-            )}
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcategory('Semua')}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors cursor-pointer ${
+                    selectedSubcategory === 'Semua'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
+                  }`}
+                >
+                  Semua Sub
+                </button>
+
+                {availableSubcategoriesForFilter.map((sub, idx) => {
+                  const subCount = products.filter(
+                    (p) =>
+                      p.subcategory === sub &&
+                      (selectedMainCategory === 'Semua' || p.category === selectedMainCategory)
+                  ).length;
+                  const isActive = selectedSubcategory === sub;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-[11px] font-semibold shrink-0 transition-colors ${
+                        isActive
+                          ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/70'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubcategory(sub)}
+                        className="cursor-pointer"
+                      >
+                        {sub} ({subCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (selectedSubcategory === sub) setSelectedSubcategory('Semua');
+                          categoryDefinitions.forEach((c) => {
+                            if (c.subcategories.includes(sub)) {
+                              deleteSubcategory(c.name, sub);
+                            }
+                          });
+                        }}
+                        className={`p-0.5 rounded-full transition-colors cursor-pointer ${
+                          isActive
+                            ? 'text-slate-800 hover:text-slate-950 hover:bg-amber-400'
+                            : 'text-slate-400 hover:text-rose-600 hover:bg-slate-200'
+                        }`}
+                        title={`Hapus sub-kategori ${sub}`}
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Direct Right-Side Add Sub-Category Pill Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatModalType('sub');
+                    setTargetMainForSub(
+                      selectedMainCategory !== 'Semua'
+                        ? selectedMainCategory
+                        : categoryDefinitions[0]?.name || ''
+                    );
+                    setNewCatName('');
+                    setIsCatModalOpen(true);
+                  }}
+                  className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 border border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 hover:border-slate-400 flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Tambah Sub-Kategori</span>
+                </button>
+              </div>
+            </div>
 
             {/* Secondary Filter Row: Condition, Expiry, & Location */}
             <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-100 text-xs">
@@ -948,8 +1024,38 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             </div>
           </div>
 
-          {/* 4. Display Products: Grid View OR Table View */}
-          {viewMode === 'grid' ? (
+          {/* 4. Display Products: Empty State OR Grid View OR Table View */}
+          {filteredProducts.length === 0 ? (
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-10 text-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center mx-auto">
+                <Package className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">
+                  {products.length === 0
+                    ? 'Gudang Masih Kosong (0 Barang)'
+                    : 'Tidak Ada Barang yang Cocok dengan Filter'}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  {products.length === 0
+                    ? 'Belum ada barang terdaftar di gudang. Klik tombol di bawah untuk menginput barang, kategori, stok, dan harga modal (HPP) pertama Anda.'
+                    : 'Coba ubah kata kunci pencarian atau pilih "Semua Kategori" dan "Semua Sub" di atas.'}
+                </p>
+              </div>
+              {products.length === 0 && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenAddModal}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Tambah Barang Pertama</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProducts.map((p) => {
                 const stockStatus = getStockStatus(p.currentStock, p.minStockAlert);
@@ -999,11 +1105,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     <div>
                       {/* Image with Direct Quick Change Overlay - Spacious, Larger, and Uncropped */}
                       <div className="relative h-64 sm:h-72 w-full bg-slate-50/70 flex items-center justify-center p-5 overflow-hidden border-b border-slate-100">
-                        <img
-                          src={p.imageUrl}
-                          alt={p.name}
-                          className="w-full h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
-                        />
+                        {p.imageUrl ? (
+                          <img
+                            src={p.imageUrl}
+                            alt={p.name}
+                            className="w-full h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center gap-2 text-slate-300 select-none">
+                            <Package className="w-12 h-12 stroke-[1.5]" />
+                            <span className="text-[11px] font-medium text-slate-400">Belum ada foto</span>
+                          </div>
+                        )}
 
                         {/* Quick Change Photo Button */}
                         <button
@@ -1172,11 +1285,17 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                         >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
-                              <img
-                                src={p.imageUrl}
-                                alt={p.name}
-                                className="w-9 h-9 rounded-xl object-cover border border-slate-200"
-                              />
+                              {p.imageUrl ? (
+                                <img
+                                  src={p.imageUrl}
+                                  alt={p.name}
+                                  className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Package className="w-4 h-4" />
+                                </div>
+                              )}
                               <div>
                                 <div className="font-semibold text-slate-900">{p.name}</div>
                                 <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
@@ -1563,14 +1682,35 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               </div>
 
               {catModalType === 'sub' && (
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-600 font-semibold">Pilih Kategori Utama Induk</label>
-                  <CustomDropdown
-                    options={categoryDefinitions.map((c) => ({ value: c.name, label: c.name }))}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-600 font-semibold">
+                    Kategori Utama Induk
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ketik atau pilih Kategori Utama induk (misal: Bahan Baku)..."
                     value={targetMainForSub}
-                    onChange={(val) => setTargetMainForSub(val)}
-                    buttonClassName="w-full bg-slate-50 border-slate-200 text-slate-900"
+                    onChange={(e) => setTargetMainForSub(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:bg-white"
                   />
+                  {categoryDefinitions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {categoryDefinitions.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setTargetMainForSub(c.name)}
+                          className={`text-[10px] px-2.5 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                            targetMainForSub === c.name
+                              ? 'bg-slate-900 text-white font-bold border-slate-900'
+                              : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200'
+                          }`}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1583,7 +1723,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   autoFocus
                   placeholder={
                     catModalType === 'main'
-                      ? 'Contoh: Frozen Food, Sayuran, Pakaian...'
+                      ? 'Contoh: Bahan Baku, Produk Siap Jual, Kemasan...'
                       : 'Contoh: Daging Ayam, Bumbu Rempah, Cup Kopi...'
                   }
                   value={newCatName}
@@ -1596,7 +1736,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setIsCatModalOpen(false)}
-                className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                className="px-4 py-2 rounded-full text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
               >
                 Batal
               </button>
@@ -1607,8 +1747,9 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                       addCategory(newCatName.trim());
                       setSelectedMainCategory(newCatName.trim());
                     } else {
-                      addSubcategory(targetMainForSub, newCatName.trim());
-                      setSelectedMainCategory(targetMainForSub);
+                      const parentName = targetMainForSub.trim() || 'Umum';
+                      addSubcategory(parentName, newCatName.trim());
+                      setSelectedMainCategory(parentName);
                       setSelectedSubcategory(newCatName.trim());
                     }
                     setNewCatName('');
@@ -1616,7 +1757,7 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                   }
                 }}
                 disabled={!newCatName.trim()}
-                className="px-5 py-2 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-sm"
+                className="px-5 py-2 rounded-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
               >
                 Simpan
               </button>
@@ -1644,14 +1785,20 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
             {/* Current Preview */}
             <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-200">
-              <img
-                src={quickImageTarget.imageUrl}
-                alt="Current Preview"
-                className="w-16 h-16 rounded-xl object-cover border border-slate-200"
-              />
+              {quickImageTarget.imageUrl ? (
+                <img
+                  src={quickImageTarget.imageUrl}
+                  alt="Current Preview"
+                  className="w-16 h-16 rounded-xl object-cover border border-slate-200"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-300 shrink-0">
+                  <Package className="w-7 h-7" />
+                </div>
+              )}
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-slate-900">Foto Saat Ini</span>
-                <p className="text-[11px] text-slate-500">Pilih metode ganti foto di bawah ini:</p>
+                <p className="text-[11px] text-slate-500">Pilih berkas dari perangkat atau masukkan tautan gambar:</p>
               </div>
             </div>
 
@@ -1745,11 +1892,18 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
                 <div className="flex items-center gap-5">
                   <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-xs p-1 flex items-center justify-center">
-                    <img
-                      src={formImageUrl}
-                      alt="Preview Foto Barang"
-                      className="w-full h-full object-contain"
-                    />
+                    {formImageUrl ? (
+                      <img
+                        src={formImageUrl}
+                        alt="Preview Foto Barang"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-1.5 text-slate-300 text-center px-2">
+                        <ImageIcon className="w-7 h-7" />
+                        <span className="text-[10px] text-slate-400">Opsional</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 space-y-2">
                     <label className="text-xs text-slate-500 font-medium">Atau tempel tautan URL foto gambar:</label>
@@ -2475,6 +2629,41 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                 </div>
               </div>
 
+              {!editingProductId && (
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={recordInitialStockToCash}
+                      onChange={(e) => setRecordInitialStockToCash(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 accent-slate-900"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        Catat pembelian stok awal ini ke Pengeluaran Buku Kas
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Otomatis memperbarui Kas Toko, Alokasi Biaya, dan Laporan Analisis jika stok & HPP terisi
+                      </span>
+                    </div>
+                  </label>
+                  {recordInitialStockToCash &&
+                    (formBatches.length > 0
+                      ? formBatches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
+                      : parseInt(formCurrentStock) || 0) > 0 &&
+                    computedHpp > 0 && (
+                      <span className="text-xs font-mono font-bold text-rose-600 shrink-0">
+                        -
+                        {formatRupiah(
+                          (formBatches.length > 0
+                            ? formBatches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
+                            : parseInt(formCurrentStock) || 0) * computedHpp
+                        )}
+                      </span>
+                    )}
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -2513,23 +2702,40 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
               {/* Product Selection */}
               <div className="space-y-1">
                 <label className="text-xs text-slate-700 font-semibold">Pilih Barang yang Mengalami Mutasi</label>
-                <CustomDropdown
-                  options={products.map((p) => ({
-                    value: p.id,
-                    label: `${p.name} (${p.currentStock} ${p.unit}) — SKU: ${p.sku}`,
-                  }))}
-                  value={movProductId}
-                  onChange={(val) => {
-                    setMovProductId(val);
-                    const matched = products.find((p) => p.id === val);
-                    if (matched) {
-                      setMovLocation(matched.location || 'Gudang Utama');
-                      setMovFinancialAmount(matched.hppAmount ? matched.hppAmount.toString() : '0');
-                    }
-                  }}
-                  className="w-full"
-                  buttonClassName="w-full bg-slate-50 border-slate-200 text-slate-900 py-2"
-                />
+                {products.length === 0 ? (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 text-xs text-amber-900">
+                    <span>Belum ada barang di Katalog Gudang (0 SKU). Tambahkan barang terlebih dahulu.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMovementModalOpen(false);
+                        setActiveStorageTab('catalog');
+                        handleOpenAddModal();
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-slate-900 text-white font-bold text-[11px] shrink-0 cursor-pointer"
+                    >
+                      + Tambah Barang
+                    </button>
+                  </div>
+                ) : (
+                  <CustomDropdown
+                    options={products.map((p) => ({
+                      value: p.id,
+                      label: `${p.name} (${p.currentStock} ${p.unit}) — SKU: ${p.sku}`,
+                    }))}
+                    value={movProductId}
+                    onChange={(val) => {
+                      setMovProductId(val);
+                      const matched = products.find((p) => p.id === val);
+                      if (matched) {
+                        setMovLocation(matched.location || 'Gudang Utama');
+                        setMovFinancialAmount(matched.hppAmount ? formatThousands(matched.hppAmount) : '0');
+                      }
+                    }}
+                    className="w-full"
+                    buttonClassName="w-full bg-slate-50 border-slate-200 text-slate-900 py-2"
+                  />
+                )}
               </div>
 
               {/* Mutation Type */}
