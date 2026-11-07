@@ -318,9 +318,29 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
+          let syncedBatches = updates.batches !== undefined ? updates.batches : p.batches;
+          if (updates.expiryDate !== undefined && updates.batches === undefined && p.batches && p.batches.length > 0) {
+            if (updates.expiryDate === null) {
+              syncedBatches = p.batches.map((b) => ({ ...b, expiryDate: null }));
+            } else {
+              let updatedFirstActive = false;
+              syncedBatches = p.batches.map((b) => {
+                if (!updatedFirstActive && b.quantity > 0) {
+                  updatedFirstActive = true;
+                  return { ...b, expiryDate: updates.expiryDate };
+                }
+                return b;
+              });
+              if (!updatedFirstActive && syncedBatches.length > 0) {
+                syncedBatches[0] = { ...syncedBatches[0], expiryDate: updates.expiryDate };
+              }
+            }
+          }
+
           return {
             ...p,
             ...updates,
+            batches: syncedBatches,
             updatedAt: nowIso,
           };
         }
@@ -715,27 +735,46 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           notes: draft.title || (change.quantityDelta > 0 ? 'Restok Masuk' : 'Penjualan Kasir'),
           createdAt: nowReadable,
         });
-      } else if (change.isNewProduct || change.quantityDelta > 0) {
-        const unitCost = change.pricePerUnit || 0;
+      } else if (change.confirmedNewProduct) {
+        const unitCost = change.hppAmount ?? change.pricePerUnit ?? 0;
+        const unitSelling =
+          change.sellingPrice !== undefined && change.sellingPrice > 0
+            ? change.sellingPrice
+            : unitCost > 0
+            ? Math.round(unitCost * 1.3)
+            : 0;
+        const computedStock =
+          change.quantityDelta >= 0
+            ? change.initialStock !== undefined
+              ? Math.max(0, change.initialStock)
+              : Math.max(0, change.quantityDelta)
+            : Math.max(
+                0,
+                (change.initialStock !== undefined
+                  ? change.initialStock
+                  : Math.abs(change.quantityDelta)) + change.quantityDelta
+              );
+
         const newProd: Product = {
-          id: `prod-${Date.now()}-${Math.random()}`,
+          id: `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           sku: `KSR-${Math.floor(100 + Math.random() * 900)}`,
           name: change.productName,
-          category: change.category || 'Umum',
+          category: change.category || 'Produk Siap Jual',
+          subcategory: change.subcategory || undefined,
           location: change.location || 'Gudang Utama',
           imageUrl: '',
-          currentStock: Math.max(0, change.quantityDelta),
-          minStockAlert: 5,
+          currentStock: computedStock,
+          minStockAlert: change.minStockAlert ?? 5,
           unit: change.unit || 'pcs',
           purchaseDate: nowIso,
           expiryDate: change.expiryDate || null,
           batches:
-            change.quantityDelta > 0
+            computedStock > 0
               ? [
                   {
                     id: `batch-${Date.now()}`,
                     batchCode: formatBatchName(nowIso),
-                    quantity: change.quantityDelta,
+                    quantity: computedStock,
                     expiryDate: change.expiryDate || null,
                     receivedDate: nowIso,
                     costPerUnit: unitCost,
@@ -744,13 +783,14 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               : [],
           hppAmount: unitCost,
           hppMethod: 'wholesale',
-          sellingPrice: unitCost > 0 ? Math.round(unitCost * 1.3) : 0,
+          sellingPrice: unitSelling,
+          lastSoldAt: change.quantityDelta < 0 ? nowReadable : undefined,
           createdAt: nowIso,
           updatedAt: nowIso,
         };
 
         if (newProd.category && newProd.category.trim()) {
-          addCategory(newProd.category.trim());
+          addCategory(newProd.category.trim(), newProd.subcategory?.trim() || undefined);
         }
 
         updatedProducts.unshift(newProd);
@@ -762,16 +802,19 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           sku: newProd.sku,
           category: newProd.category,
           location: newProd.location,
-          type: 'in_purchase',
+          type: change.quantityDelta >= 0 ? 'in_purchase' : 'out_sale',
           quantityDelta: change.quantityDelta,
           unit: newProd.unit,
-          stockBefore: 0,
+          stockBefore: change.quantityDelta < 0 ? (change.initialStock ?? Math.abs(change.quantityDelta)) : 0,
           stockAfter: newProd.currentStock,
-          batchCode: formatBatchName(nowIso),
+          batchCode: change.quantityDelta >= 0 ? formatBatchName(nowIso) : undefined,
           batchExpiry: newProd.expiryDate,
-          financialAmount: unitCost * newProd.currentStock,
+          financialAmount:
+            change.quantityDelta >= 0
+              ? unitCost * Math.max(1, change.quantityDelta)
+              : unitSelling * Math.abs(change.quantityDelta),
           source: draft.source.startsWith('mic') ? 'Voice Mic' : 'Pencatatan Draf Pintar',
-          notes: draft.title || 'Barang Baru & Restok',
+          notes: draft.title || 'Barang Baru Ditambahkan ke Gudang',
           createdAt: nowReadable,
         });
       }

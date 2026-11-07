@@ -103,8 +103,9 @@ const CUSTOMER_SALE_PATTERNS: RegExp[] = [
   // Customer as subject + buying/ordering/taking verb (even if STT drops "yang" -> "tadi ada beli")
   /\b(?:ada\s+yang|ada\s+yg|ada\s+orang|ada\s+pembeli|ada\s+pelanggan|ada\s+customer|ada\s+konsumen|ada\s+tamu|ada)\s+(?:tadi\s+|barusan\s+|baru\s+|lagi\s+|mau\s+)*(?:beli|membeli|ngebeli|borong|ngeborong|ambil|ngambil|pesan|pesen|memesan|order|ngorder|checkout|bungkus|ngebungkus|cari|minta|tumbas|bayar)\b/i,
   /\b(?:orang|pembeli|pelanggan|customer|konsumen|kastemer|tamu|klien|client|bapak|bapak2|ibu|ibu2|mas|masnya|mbak|mbaknya|kakak|kak|adek|adik|abang|bang|teteh|teh|om|tante|bocil|anak|tetangga|temen|teman|dia|mereka|seseorang|pengunjung)\s+(?:nya\s+|itu\s+|tadi\s+|barusan\s+|baru\s+|lagi\s+|mau\s+|udah\s+|sudah\s+)*(?:beli|membeli|ngebeli|borong|ngeborong|ambil|ngambil|pesan|pesen|memesan|order|ngorder|checkout|bungkus|ngebungkus|tumbas)\b/i,
-  // Direct sale & passive purchase verbs (dibeli = bought by customer!)
-  /\b(?:laku|lakunya|ngelakuin|kejual|terjual|jual|menjual|ngejual|penjualan|dibeli|kebeli|terbeli|diborong|dipesan|dipesen|diorder|diambil\s+pembeli|sold|sold\s+out|closing|omset|omzet|kasir\s+masuk)\b/i,
+  // Direct sale & passive purchase verbs (dibeli = bought by customer! Note: exclude "harga jual")
+  /\b(?:laku|lakunya|ngelakuin|kejual|terjual|menjual|ngejual|penjualan|dibeli|kebeli|terbeli|diborong|dipesan|dipesen|diorder|diambil\s+pembeli|sold|sold\s+out|closing|omset|omzet|kasir\s+masuk)\b/i,
+  /(?<!harga\s)\bjual\b/i,
   // Incoming order nouns
   /\b(?:ada\s+(?:orderan|pesanan|transaksi\s+masuk|pembelian\s+masuk)|orderan\s+masuk|pesanan\s+masuk)\b/i,
   // Explicit causal hints of a sale ("leci keluar 10 dapat duit", "stok berkurang ... uang masuk")
@@ -246,18 +247,7 @@ export function autocorrectIndonesianVoice(rawInput: string): LiveIntentFeedback
     };
   }
 
-  // Priority 3: Loss / Waste / Damaged / Expired
-  if (matchesAny(lower, LOSS_WASTE_PATTERNS)) {
-    return {
-      cleanedText: text,
-      detectedIntent: 'loss',
-      intentLabel: 'Barang Rusak / Basi (-Stok)',
-      intentColor: '#f59e0b',
-      suggestedAction: 'Mengurangi stok barang rusak/basi di gudang',
-    };
-  }
-
-  // Priority 4: Store Restock / Kulakan
+  // Priority 3: Store Restock / Kulakan (checked before Loss so "kulakan ... expired 25 nov" stays Restock!)
   if (matchesAny(lower, EXPLICIT_RESTOCK_PATTERNS)) {
     return {
       cleanedText: text,
@@ -265,6 +255,17 @@ export function autocorrectIndonesianVoice(rawInput: string): LiveIntentFeedback
       intentLabel: 'Kulakan / Restok (+Stok & -Uang Keluar)',
       intentColor: '#06b6d4',
       suggestedAction: 'Menambah stok gudang & mencatat uang keluar',
+    };
+  }
+
+  // Priority 4: Loss / Waste / Damaged / Expired
+  if (matchesAny(lower, LOSS_WASTE_PATTERNS)) {
+    return {
+      cleanedText: text,
+      detectedIntent: 'loss',
+      intentLabel: 'Barang Rusak / Basi (-Stok)',
+      intentColor: '#f59e0b',
+      suggestedAction: 'Mengurangi stok barang rusak/basi di gudang',
     };
   }
 
@@ -530,40 +531,221 @@ export function extractSpokenQuantity(text: string): {
 }
 
 // -------------------------------------------------------------
-// 4. Expiry Date Extractor ("expired 30 november", "kadaluarsa 2026-11-20")
+// 4. Flexible Indonesian Date Extractor ("expired 30 november", "14 hari lagi", "25/11/2026", etc.)
 // -------------------------------------------------------------
-export function extractSpokenExpiryDate(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  const dateMatch = lower.match(
-    /(?:exp|expired|kadaluarsa|kedaluwarsa)\s+(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?/i
-  );
-  if (!dateMatch) {
-    const isoMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-    return isoMatch ? isoMatch[1] : undefined;
+const INDO_MONTHS_MAP: Record<string, number> = {
+  jan: 1, januari: 1, january: 1,
+  feb: 2, februari: 2, pebruari: 2, february: 2,
+  mar: 3, maret: 3, march: 3,
+  apr: 4, april: 4,
+  mei: 5, may: 5,
+  jun: 6, juni: 6, june: 6,
+  jul: 7, juli: 7, july: 7,
+  agu: 8, agustus: 8, agust: 8, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  okt: 10, oktober: 10, oct: 10, october: 10,
+  nov: 11, nop: 11, november: 11, nopember: 11,
+  des: 12, desember: 12, dec: 12, december: 12,
+};
+
+function formatLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function parseFlexibleIndonesianDate(
+  phrase: string,
+  baseDateStr?: string | null
+): string | undefined {
+  const lower = phrase.toLowerCase().trim();
+  const now = new Date();
+  const baseDate =
+    baseDateStr && /^\d{4}-\d{2}-\d{2}$/.test(baseDateStr)
+      ? new Date(`${baseDateStr}T00:00:00`)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // 1. YYYY-MM-DD
+  const isoMatch = lower.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10);
+    const d = parseInt(isoMatch[3], 10);
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
 
-  const day = parseInt(dateMatch[1], 10);
-  const monthName = dateMatch[2];
-  const year = dateMatch[3] ? parseInt(dateMatch[3], 10) : new Date().getFullYear();
+  // 2. DD/MM/YYYY or DD-MM-YYYY
+  const dmySlash = lower.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+  if (dmySlash) {
+    const d = parseInt(dmySlash[1], 10);
+    const m = parseInt(dmySlash[2], 10);
+    let y = parseInt(dmySlash[3], 10);
+    if (y < 100) y += 2000;
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
 
-  const months: Record<string, number> = {
-    jan: 1, januari: 1,
-    feb: 2, februari: 2,
-    mar: 3, maret: 3,
-    apr: 4, april: 4,
-    mei: 5, may: 5,
-    jun: 6, juni: 6,
-    jul: 7, juli: 7,
-    agu: 8, agustus: 8,
-    sep: 9, september: 9,
-    okt: 10, oktober: 10,
-    nov: 11, november: 11,
-    des: 12, desember: 12,
-  };
+  // 3. Explicit Day + Month Name (+ optional Year), e.g. "25 november 2026" or "tanggal 10 desember"
+  const monthNamesGroup = Object.keys(INDO_MONTHS_MAP).join('|');
+  const namedMatch = lower.match(
+    new RegExp(`(?:tanggal\\s+|tgl\\s+)?(\\d{1,2})\\s+(${monthNamesGroup})(?:\\s+(\\d{4}))?`, 'i')
+  );
+  if (namedMatch) {
+    const d = parseInt(namedMatch[1], 10);
+    const m = INDO_MONTHS_MAP[namedMatch[2].toLowerCase()] || now.getMonth() + 1;
+    let y = namedMatch[3] ? parseInt(namedMatch[3], 10) : now.getFullYear();
+    if (!namedMatch[3] && /tahun\s+depan/i.test(lower)) {
+      y += 1;
+    }
+    if (d >= 1 && d <= 31) {
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
 
-  const monthNum = months[monthName] || new Date().getMonth() + 1;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${year}-${pad(monthNum)}-${pad(day)}`;
+  // 4. Spoken word day + Month Name, e.g. "dua puluh lima november"
+  const wordDayMatch = lower.match(
+    new RegExp(
+      `(?:tanggal\\s+|tgl\\s+)?((?:(?:satu|dua|tiga|empat|lima|enam|tujuh|delapan|lapan|sembilan|sepuluh|sebelas|belas|puluh)\\s*)+)\\s+(${monthNamesGroup})(?:\\s+(\\d{4}))?`,
+      'i'
+    )
+  );
+  if (wordDayMatch) {
+    const parsedDay = parseSpokenNumberPhrase(wordDayMatch[1]);
+    if (parsedDay && parsedDay >= 1 && parsedDay <= 31) {
+      const m = INDO_MONTHS_MAP[wordDayMatch[2].toLowerCase()] || now.getMonth() + 1;
+      const y = wordDayMatch[3] ? parseInt(wordDayMatch[3], 10) : now.getFullYear();
+      return `${y}-${String(m).padStart(2, '0')}-${String(parsedDay).padStart(2, '0')}`;
+    }
+  }
+
+  // 5. Relative words: hari ini, besok, lusa, kemarin, seminggu lagi, sebulan lagi, N hari/minggu/bulan lagi/lalu
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (/\bhari\s+ini\b/i.test(lower)) return formatLocalYmd(today);
+  if (/\bbesok\b/i.test(lower)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return formatLocalYmd(d);
+  }
+  if (/\blusa\b/i.test(lower)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 2);
+    return formatLocalYmd(d);
+  }
+  if (/\bkemarin\b/i.test(lower)) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return formatLocalYmd(d);
+  }
+  if (/\b(?:seminggu|satu\s+minggu|1\s+minggu)\s+(?:lagi|ke\s+depan)\b|\bminggu\s+depan\b/i.test(lower)) {
+    const ref = /\b(?:perpanjang|undur|mundur|tambah)\b/i.test(lower) ? new Date(baseDate) : new Date(today);
+    ref.setDate(ref.getDate() + 7);
+    return formatLocalYmd(ref);
+  }
+  if (/\b(?:sebulan|satu\s+bulan|1\s+bulan)\s+(?:lagi|ke\s+depan)\b|\bbulan\s+depan\b/i.test(lower)) {
+    const ref = /\b(?:perpanjang|undur|mundur|tambah)\b/i.test(lower) ? new Date(baseDate) : new Date(today);
+    ref.setMonth(ref.getMonth() + 1);
+    return formatLocalYmd(ref);
+  }
+  if (/\b(?:setahun|satu\s+tahun|1\s+tahun)\s+(?:lagi|ke\s+depan)\b|\btahun\s+depan\b/i.test(lower)) {
+    const ref = /\b(?:perpanjang|undur|mundur|tambah)\b/i.test(lower) ? new Date(baseDate) : new Date(today);
+    ref.setFullYear(ref.getFullYear() + 1);
+    return formatLocalYmd(ref);
+  }
+
+  // Digit or word N + hari/minggu/bulan/tahun + (lagi / ke depan / lalu)
+  const relDigit = lower.match(
+    /(\d+)\s*(hari|minggu|pekan|bulan|tahun)\s*(lagi|ke\s*depan|dari\s*sekarang|lalu|yang\s*lalu)?/i
+  );
+  if (relDigit) {
+    const count = parseInt(relDigit[1], 10);
+    const unit = relDigit[2].toLowerCase();
+    const dir = relDigit[3] && /lalu/i.test(relDigit[3]) ? -1 : 1;
+    const isExtend = /\b(?:perpanjang|undur|mundur)\b/i.test(lower) && dir === 1;
+    const d = isExtend ? new Date(baseDate) : new Date(today);
+    if (unit === 'hari') d.setDate(d.getDate() + dir * count);
+    else if (unit === 'minggu' || unit === 'pekan') d.setDate(d.getDate() + dir * count * 7);
+    else if (unit === 'bulan') d.setMonth(d.getMonth() + dir * count);
+    else if (unit === 'tahun') d.setFullYear(d.getFullYear() + dir * count);
+    return formatLocalYmd(d);
+  }
+
+  return undefined;
+}
+
+export function extractSpokenExpiryDate(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  const expSegmentMatch = lower.match(
+    /(?:exp|expired|kadaluarsa|kedaluwarsa)(?:nya)?\s+(?:tanggal\s+|tgl\s+|jadi\s+|ke\s+|pada\s+)?([^,;.]+)/i
+  );
+  if (expSegmentMatch) {
+    const parsed = parseFlexibleIndonesianDate(expSegmentMatch[1]);
+    if (parsed) return parsed;
+  }
+  const isoMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  return isoMatch ? isoMatch[1] : undefined;
+}
+
+function extractSpokenItemMetadata(clause: string): {
+  sellingPrice?: number;
+  hppAmount?: number;
+  location?: string;
+  category?: string;
+  subcategory?: string;
+} {
+  const result: {
+    sellingPrice?: number;
+    hppAmount?: number;
+    location?: string;
+    category?: string;
+    subcategory?: string;
+  } = {};
+
+  const sellMatch = clause.match(
+    /(?:harga\s+jual(?:nya)?|dijual\s+(?:seharga|harga)?)\s*(?:jadi\s+|ke\s+)?((?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:ribu|rebu|rb|k|juta|jt)?|[a-z\s]{3,25})/i
+  );
+  if (sellMatch) {
+    const p = parseIndonesianSpokenAmount(sellMatch[1]);
+    if (p > 0) result.sellingPrice = p;
+  }
+
+  const hppMatch = clause.match(
+    /(?:harga\s+(?:modal|beli|kulakan)(?:nya)?|hpp(?:\s*nya)?|modal(?:nya)?)\s*(?:jadi\s+|ke\s+)?((?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:ribu|rebu|rb|k|juta|jt)?|[a-z\s]{3,25})/i
+  );
+  if (hppMatch) {
+    const p = parseIndonesianSpokenAmount(hppMatch[1]);
+    if (p > 0) result.hppAmount = p;
+  }
+
+  const locMatch = clause.match(
+    /(?:lokasi(?:\s+simpan)?|simpan\s+di|taruh\s+di|di\s+(?=kulkas|freezer|chiller|rak|etalase|gudang|lemari|dapur))\s*([a-zA-Z0-9\s#-]{2,30}?)(?=\s+(?:exp|expired|kadaluarsa|kedaluwarsa|harga|modal|kategori|sub|$)|[,;.]|$)/i
+  );
+  if (locMatch && locMatch[1].trim()) {
+    result.location = locMatch[1]
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  const subMatch = clause.match(
+    /(?:sub\s*-?\s*kategori(?:nya)?)\s+(?:jadi\s+|ke\s+)?([a-zA-Z0-9\s&]{2,28}?)(?=\s+(?:di|exp|expired|kadaluarsa|harga|lokasi|$)|[,;.]|$)/i
+  );
+  if (subMatch && subMatch[1].trim()) {
+    result.subcategory = subMatch[1]
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  const catMatch = clause.match(
+    /(?<!sub\s)(?<!sub-)\b(?:kategori(?:\s+utama)?(?:nya)?)\s+(?:jadi\s+|ke\s+)?([a-zA-Z0-9\s&]{2,28}?)(?=\s+(?:sub|exp|expired|kadaluarsa|harga|lokasi|$)|[,;.]|$)/i
+  );
+  if (catMatch && catMatch[1].trim()) {
+    result.category = catMatch[1]
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  return result;
 }
 
 // -------------------------------------------------------------
@@ -634,11 +816,16 @@ function extractUnregisteredItemDetails(clause: string): {
   const lower = clause.toLowerCase();
   const unitRegexGroup = UNIT_KEYWORDS.join('|');
 
-  // Strip conversational filler, subjects, command verbs, units, and prices cleanly
+  // Strip metadata tails (expiry, location, category, prices) + conversational filler cleanly
   let clean = lower
-    .replace(/(?:exp|expired|kadaluarsa|kedaluwarsa)\s+\d{1,2}\s+[a-z]+(?:\s+\d{4})?/gi, ' ')
+    .replace(/(?:exp|expired|kadaluarsa|kedaluwarsa)(?:nya)?\s+[^,;.]+/gi, ' ')
     .replace(
-      /\b(?:tadi|barusan|baru\s+saja|hari\s+ini|kemarin|tolong|coba|dong|deh|ya|nih|kok|lah|kan|terus|trus|lalu|sama|dan)\b/gi,
+      /(?:lokasi(?:\s+simpan)?|simpan\s+di|taruh\s+di|di\s+(?:kulkas|freezer|chiller|rak|etalase|gudang|lemari|dapur)(?:\s+[a-z0-9#-]+)?)/gi,
+      ' '
+    )
+    .replace(/(?:sub\s*-?\s*kategori|kategori(?:\s+utama)?)\s+[a-z0-9\s&]+/gi, ' ')
+    .replace(
+      /\b(?:tadi|barusan|baru\s+saja|baru|hari\s+ini|kemarin|tolong|coba|dong|deh|ya|nih|kok|lah|kan|terus|trus|lalu|sama|dan|jadi|ke)\b/gi,
       ' '
     )
     .replace(
@@ -855,8 +1042,11 @@ export function parseOmniboxInput(
     // STRICT PRIORITY INTENT DISAMBIGUATION
     // ---------------------------------------------------------
     const isCustomerSaleExplicit = matchesAny(clLower, CUSTOMER_SALE_PATTERNS);
-    const isLossExplicit = matchesAny(clLower, LOSS_WASTE_PATTERNS);
     const isRestockExplicit = !isCustomerSaleExplicit && matchesAny(clLower, EXPLICIT_RESTOCK_PATTERNS);
+    const clauseWithoutDate = expiryDate
+      ? clLower.replace(/(?:exp|expired|kadaluarsa|kedaluwarsa)\s+\d{1,2}\s+[a-z]+(?:\s+\d{4})?/gi, ' ')
+      : clLower;
+    const isLossExplicit = matchesAny(clauseWithoutDate, LOSS_WASTE_PATTERNS);
     const isPureExpenseExplicit = matchesAny(clLower, PURE_EXPENSE_PATTERNS);
     const isPureIncomeExplicit = matchesAny(clLower, PURE_INCOME_PATTERNS);
 
@@ -869,10 +1059,10 @@ export function parseOmniboxInput(
 
     if (isCustomerSaleExplicit) {
       intent = 'sale';
-    } else if (isLossExplicit) {
-      intent = 'loss';
     } else if (isRestockExplicit) {
       intent = 'restock';
+    } else if (isLossExplicit && !hasBareStoreBuy) {
+      intent = 'loss';
     } else if (hasBareStoreBuy) {
       // If a known catalog product is mentioned (e.g. "beli leci 10") or stock units/items, treat as restock;
       // if non-product operational item (e.g. "beli bensin 20rb", "beli es batu 15rb"), treat as expense!
@@ -982,8 +1172,9 @@ export function parseOmniboxInput(
         }
         return;
       } else {
-        // Unregistered product sale: record Cash Income AND Stock Deduction draft
+        // Unregistered product sale: record Cash Income AND offer adding the unregistered item to Gudang via prompt!
         const itemInfo = extractUnregisteredItemDetails(clause);
+        const meta = extractSpokenItemMetadata(clause);
         const finalQty = rawQty > 0 ? rawQty * unitMultiplier : 1;
         const finalUnit = detectedUnit !== 'pcs' ? detectedUnit : itemInfo.suggestedUnit;
         const totalAmount =
@@ -991,7 +1182,12 @@ export function parseOmniboxInput(
             ? finalQty * perUnitSpokenPrice
             : explicitAmount > 0
             ? explicitAmount
-            : finalQty * itemInfo.defaultPrice;
+            : finalQty * (meta.sellingPrice || itemInfo.defaultPrice);
+
+        const unitSellPrice =
+          meta.sellingPrice ||
+          (finalQty > 0 ? Math.round(totalAmount / finalQty) : itemInfo.defaultPrice);
+        const unitHpp = meta.hppAmount ?? Math.round(unitSellPrice * 0.7);
 
         cashChanges.push({
           type: 'income',
@@ -999,6 +1195,24 @@ export function parseOmniboxInput(
           category: 'Penjualan',
           description: `Penjualan ${finalQty} ${finalUnit} ${itemInfo.name}`,
         });
+
+        if (itemInfo.name && itemInfo.name !== 'Barang Toko') {
+          stockChanges.push({
+            productName: itemInfo.name,
+            category: meta.category || itemInfo.category,
+            subcategory: meta.subcategory || itemInfo.subcategory,
+            location: meta.location,
+            unit: finalUnit,
+            quantityDelta: -finalQty,
+            pricePerUnit: unitSellPrice,
+            sellingPrice: unitSellPrice,
+            hppAmount: unitHpp,
+            initialStock: finalQty,
+            expiryDate: expiryDate || undefined,
+            isNewProduct: true,
+            confirmedNewProduct: false,
+          });
+        }
 
         explanations.push(
           `Penjualan ${finalQty} ${finalUnit} ${itemInfo.name}: Uang Masuk (+Rp ${totalAmount.toLocaleString(
@@ -1072,6 +1286,7 @@ export function parseOmniboxInput(
         return;
       } else {
         const itemInfo = extractUnregisteredItemDetails(clause);
+        const meta = extractSpokenItemMetadata(clause);
         const finalQty = rawQty > 0 ? rawQty * unitMultiplier : 1;
         const finalUnit = detectedUnit !== 'pcs' ? detectedUnit : itemInfo.suggestedUnit;
 
@@ -1083,27 +1298,41 @@ export function parseOmniboxInput(
         if (alreadyRestocked) return;
 
         const totalCost =
-          perUnitSpokenPrice > 0
+          meta.hppAmount && meta.hppAmount > 0
+            ? finalQty * meta.hppAmount
+            : perUnitSpokenPrice > 0
             ? finalQty * perUnitSpokenPrice
             : explicitAmount > 0
             ? explicitAmount
             : finalQty * itemInfo.defaultPrice;
 
+        const unitCost = finalQty > 0 ? Math.round(totalCost / finalQty) : itemInfo.defaultPrice;
+        const unitSell =
+          meta.sellingPrice && meta.sellingPrice > 0
+            ? meta.sellingPrice
+            : Math.round(unitCost * 1.3);
+
         cashChanges.push({
           type: 'expense',
           amount: totalCost,
-          category: itemInfo.category,
+          category: meta.category || itemInfo.category,
           description: `Kulakan ${finalQty} ${finalUnit} ${itemInfo.name}`,
         });
 
         stockChanges.push({
           productName: itemInfo.name,
-          category: itemInfo.category,
+          category: meta.category || itemInfo.category,
+          subcategory: meta.subcategory || itemInfo.subcategory,
+          location: meta.location,
           unit: finalUnit,
           quantityDelta: finalQty, // STOK BERTAMBAH!
-          pricePerUnit: finalQty > 0 ? Math.round(totalCost / finalQty) : itemInfo.defaultPrice,
+          pricePerUnit: unitCost,
+          hppAmount: unitCost,
+          sellingPrice: unitSell,
+          initialStock: finalQty,
           expiryDate: expiryDate || undefined,
           isNewProduct: true,
+          confirmedNewProduct: false,
         });
 
         explanations.push(
@@ -1137,14 +1366,22 @@ export function parseOmniboxInput(
         return;
       } else {
         const itemInfo = extractUnregisteredItemDetails(clause);
+        const meta = extractSpokenItemMetadata(clause);
         const finalQty = rawQty > 0 ? rawQty : 1;
         const finalUnit = detectedUnit !== 'pcs' ? detectedUnit : itemInfo.suggestedUnit;
         stockChanges.push({
           productName: itemInfo.name,
-          category: itemInfo.category,
+          category: meta.category || itemInfo.category,
+          subcategory: meta.subcategory || itemInfo.subcategory,
+          location: meta.location,
           unit: finalUnit,
           quantityDelta: -finalQty,
           pricePerUnit: itemInfo.defaultPrice,
+          hppAmount: itemInfo.defaultPrice,
+          sellingPrice: Math.round(itemInfo.defaultPrice * 1.3),
+          initialStock: finalQty,
+          isNewProduct: true,
+          confirmedNewProduct: false,
         });
 
         explanations.push(
@@ -1284,3 +1521,292 @@ export function parseReceiptImage(
     timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
   };
 }
+
+// -------------------------------------------------------------
+// 8. Dedicated Voice Engine for Modifying Product Information in Gudang
+// -------------------------------------------------------------
+export interface ProductVoiceEditPatch {
+  name?: string;
+  sku?: string;
+  category?: string;
+  subcategory?: string;
+  location?: string;
+  unit?: string;
+  currentStock?: number;
+  minStockAlert?: number;
+  hppAmount?: number;
+  sellingPrice?: number;
+  purchaseDate?: string;
+  expiryDate?: string | null;
+}
+
+export interface ProductVoiceEditResult {
+  matchedProduct: Product | null;
+  changes: ProductVoiceEditPatch;
+  summaryLines: string[];
+  cleanedText: string;
+}
+
+function titleCaseClean(s: string): string {
+  return s
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join(' ');
+}
+
+export function parseProductInfoEditVoice(
+  rawInput: string,
+  existingProducts: Product[],
+  lockedProduct?: Product | null
+): ProductVoiceEditResult {
+  const feedback = autocorrectIndonesianVoice(rawInput);
+  const cleanedText = feedback.cleanedText || rawInput.trim();
+
+  if (!cleanedText) {
+    return {
+      matchedProduct: lockedProduct || null,
+      changes: {},
+      summaryLines: [],
+      cleanedText: '',
+    };
+  }
+
+  // Resolve target product: use lockedProduct if provided, unless user explicitly names a known product
+  const spokenMatch = findBestMatchingProduct(cleanedText, existingProducts);
+  const targetProduct = lockedProduct || spokenMatch || null;
+
+  const changes: ProductVoiceEditPatch = {};
+  const summaryLines: string[] = [];
+
+  // Split into sub-clauses so multi-field edits in one breath all get captured cleanly
+  const subClauses = cleanedText
+    .replace(/(?:;|\n|\r\n)+/g, ' [SEP] ')
+    .replace(
+      /,?\s*\b(?:terus|trus|lalu|kemudian|habis\s+itu|abis\s+itu|sama|serta|dan\s+(?=(?:ubah|ganti|set|atur|naikin|turunin|pindah|pindahin|taruh|simpan|hapus|kosongkan|perpanjang|harga|modal|hpp|tanggal|exp|expired|kadaluarsa|kedaluwarsa|lokasi|kategori|sub|satuan|unit|stok|minimal|batas|alarm|nama|sku)))\b/gi,
+      ' [SEP] '
+    )
+    .replace(
+      /,\s*(?=(?:ubah|ganti|set|atur|naikin|turunin|pindah|pindahin|taruh|simpan|hapus|kosongkan|perpanjang|harga|modal|hpp|tanggal|exp|expired|kadaluarsa|kedaluwarsa|lokasi|kategori|sub|satuan|unit|stok|minimal|batas|alarm|nama|sku))/gi,
+      ' [SEP] '
+    )
+    .split(/\s*\[SEP\]\s*/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  // Strip the matched product's name from value captures so "ubah harga jual leci jadi 15 ribu" doesn't confuse product name with target value
+  const stripTargetName = (str: string): string => {
+    if (!targetProduct) return str;
+    const rx = new RegExp(`\\b${escapeRegex(targetProduct.name)}\\b`, 'gi');
+    return str.replace(rx, ' ').replace(/\s+/g, ' ').trim();
+  };
+
+  for (const rawClause of subClauses) {
+    const clause = rawClause.trim();
+    const lower = clause.toLowerCase();
+
+    // 1. EXPIRY DATE (Tanggal Kedaluwarsa)
+    if (/\b(?:exp|expired|kadaluarsa|kedaluwarsa|masa\s+berlaku)\b/i.test(lower)) {
+      if (
+        /\b(?:hapus|dihapus|kosongkan|dikosongkan|hilangkan|tanpa|bebas|tidak\s+ada|gak\s+ada|nggak\s+ada|nol)\b/i.test(
+          lower
+        )
+      ) {
+        changes.expiryDate = null;
+        summaryLines.push('Tanggal Kedaluwarsa → Bebas Kedaluwarsa (Dikosongkan)');
+        continue;
+      }
+
+      const parsedExp = parseFlexibleIndonesianDate(lower, targetProduct?.expiryDate || null);
+      if (parsedExp) {
+        changes.expiryDate = parsedExp;
+        summaryLines.push(`Tanggal Kedaluwarsa → ${parsedExp}`);
+        continue;
+      }
+    }
+
+    // 2. PURCHASE DATE (Tanggal Beli / Kulakan)
+    if (/\b(?:tanggal|tgl)\s+(?:beli|pembelian|kulak|kulakan|masuk)\b/i.test(lower)) {
+      const parsedBuy = parseFlexibleIndonesianDate(lower, targetProduct?.purchaseDate || null);
+      if (parsedBuy) {
+        changes.purchaseDate = parsedBuy;
+        summaryLines.push(`Tanggal Beli / Kulakan → ${parsedBuy}`);
+        continue;
+      }
+    }
+
+    // 3. HPP / HARGA MODAL / HARGA BELI
+    if (/\b(?:harga\s+(?:modal|beli|kulak|kulakan|pokok)|hpp|modal(?:nya)?)\b/i.test(lower)) {
+      const amt = parseIndonesianSpokenAmount(clause);
+      if (amt > 0) {
+        const currentHpp = targetProduct?.hppAmount || 0;
+        if (/\b(?:naik|naikin|naikkan|tambah|tambahin)\b/i.test(lower)) {
+          changes.hppAmount = currentHpp + amt;
+        } else if (/\b(?:turun|turunin|turunkan|kurang|kurangi|potong)\b/i.test(lower)) {
+          changes.hppAmount = Math.max(0, currentHpp - amt);
+        } else {
+          changes.hppAmount = amt;
+        }
+        summaryLines.push(
+          `Harga Modal (HPP) → Rp ${changes.hppAmount.toLocaleString('id-ID')}`
+        );
+        // If clause ALSO mentions harga jual in the same breath without [SEP], fall through only if harga jual is present
+        if (!/\bharga\s+jual\b/i.test(lower)) continue;
+      }
+    }
+
+    // 4. SELLING PRICE (Harga Jual / Generic Harga)
+    if (
+      /\b(?:harga\s+jual|jualnya|dijual)\b/i.test(lower) ||
+      (/\bharga(?:nya)?\b/i.test(lower) && !/\b(?:modal|beli|kulak|kulakan|pokok|hpp)\b/i.test(lower))
+    ) {
+      const sellSlice =
+        lower.match(/(?:harga\s+jual(?:nya)?|jualnya|dijual|harga(?:nya)?)\s*(.*)$/i)?.[1] ||
+        clause;
+      const amt = parseIndonesianSpokenAmount(sellSlice);
+      if (amt > 0) {
+        const currentSell = targetProduct?.sellingPrice || 0;
+        if (/\b(?:naik|naikin|naikkan|tambah|tambahin)\b/i.test(lower)) {
+          changes.sellingPrice = currentSell + amt;
+        } else if (/\b(?:turun|turunin|turunkan|kurang|kurangi|potong|diskon)\b/i.test(lower)) {
+          changes.sellingPrice = Math.max(0, currentSell - amt);
+        } else {
+          changes.sellingPrice = amt;
+        }
+        summaryLines.push(`Harga Jual → Rp ${changes.sellingPrice.toLocaleString('id-ID')}`);
+        continue;
+      }
+    }
+
+    // 5. MIN STOCK ALERT (Batas Alarm Stok Menipis / Minimal Stok)
+    if (
+      /\b(?:(?:batas|alarm|peringatan)\s+(?:stok|barang)|(?:minimal|minimum|min)\s+stok|stok\s+(?:minimal|minimum|min|tipis|menipis|kritis))\b/i.test(
+        lower
+      )
+    ) {
+      const stripped = stripTargetName(lower);
+      const { qty } = extractSpokenQuantity(stripped);
+      const zeroExplicit = /\b(?:0|nol|kosong)\b/i.test(stripped);
+      const nextMin = zeroExplicit ? 0 : qty;
+      changes.minStockAlert = nextMin;
+      summaryLines.push(`Batas Alarm Stok Menipis → ${nextMin}`);
+      continue;
+    }
+
+    // 6. CURRENT STOCK (Jumlah Stok Sekarang / Fisik)
+    if (/\b(?:jumlah\s+stok|stok\s+(?:sekarang|fisik|gudang|saat\s+ini)|stok(?:nya)?)\b/i.test(lower)) {
+      const stripped = stripTargetName(lower);
+      const { qty } = extractSpokenQuantity(stripped);
+      const zeroExplicit = /\b(?:0|nol|kosong|habis|abis)\b/i.test(stripped);
+      const baseStock = targetProduct?.currentStock || 0;
+      if (zeroExplicit) {
+        changes.currentStock = 0;
+      } else if (/\b(?:tambah|tambahin|nambah)\b/i.test(lower) && !/\bjadi\b/i.test(lower)) {
+        changes.currentStock = baseStock + qty;
+      } else if (/\b(?:kurang|kurangi|ngurang|potong)\b/i.test(lower) && !/\bjadi\b/i.test(lower)) {
+        changes.currentStock = Math.max(0, baseStock - qty);
+      } else {
+        changes.currentStock = qty;
+      }
+      summaryLines.push(`Jumlah Stok Sekarang → ${changes.currentStock}`);
+      continue;
+    }
+
+    // 7. SUB-CATEGORY
+    if (/\b(?:sub\s*-?\s*kategori)\b/i.test(lower)) {
+      const m = clause.match(
+        /(?:sub\s*-?\s*kategori(?:nya)?)\s*(?:diubah|diganti|ubah|ganti)?\s*(?:jadi|menjadi|ke)?\s+(.+)$/i
+      );
+      if (m && m[1]) {
+        const val = titleCaseClean(stripTargetName(m[1]).replace(/[.!?]+$/, ''));
+        if (val) {
+          changes.subcategory = val;
+          summaryLines.push(`Sub-Kategori → ${val}`);
+          continue;
+        }
+      }
+    }
+
+    // 8. MAIN CATEGORY
+    if (/\bkategori\b/i.test(lower) && !/\bsub\s*-?\s*kategori\b/i.test(lower)) {
+      const m = clause.match(
+        /kategori(?:\s+utama)?(?:nya)?\s*(?:diubah|diganti|ubah|ganti|pindah)?\s*(?:jadi|menjadi|ke)?\s+(.+)$/i
+      );
+      if (m && m[1]) {
+        const val = titleCaseClean(stripTargetName(m[1]).replace(/[.!?]+$/, ''));
+        if (val) {
+          changes.category = val;
+          summaryLines.push(`Kategori Utama → ${val}`);
+          continue;
+        }
+      }
+    }
+
+    // 9. STORAGE LOCATION (Lokasi Penyimpanan)
+    if (/\b(?:lokasi|tempat\s+simpan|penyimpanan|pindah(?:in|kan)?|simpan\s+di|taruh\s+di)\b/i.test(lower)) {
+      const m =
+        clause.match(
+          /(?:lokasi(?:\s+penyimpanan|\s+simpan)?(?:nya)?|tempat\s+simpan(?:nya)?)\s*(?:diubah|diganti|ubah|ganti|pindah|pindahin)?\s*(?:jadi|menjadi|ke|di)?\s+(.+)$/i
+        ) ||
+        clause.match(/(?:pindah(?:in|kan)?.*?\bke|simpan\s+di|taruh\s+di)\s+(.+)$/i);
+      if (m && m[1]) {
+        const val = titleCaseClean(stripTargetName(m[1]).replace(/[.!?]+$/, ''));
+        if (val) {
+          changes.location = val;
+          summaryLines.push(`Lokasi Simpan → ${val}`);
+          continue;
+        }
+      }
+    }
+
+    // 10. UNIT (Satuan Barang)
+    if (/\b(?:satuan|unit)\b/i.test(lower)) {
+      const m = clause.match(
+        /(?:satuan|unit)(?:nya)?\s*(?:diubah|diganti|ubah|ganti)?\s*(?:jadi|menjadi|ke)?\s+([a-zA-Z0-9]+)/i
+      );
+      if (m && m[1]) {
+        const val = m[1].trim().toLowerCase();
+        changes.unit = val;
+        summaryLines.push(`Satuan Unit → ${val}`);
+        continue;
+      }
+    }
+
+    // 11. SKU
+    if (/\bsku\b/i.test(lower)) {
+      const m = clause.match(
+        /sku(?:\s*nya)?\s*(?:diubah|diganti|ubah|ganti)?\s*(?:jadi|menjadi|ke)?\s+([a-zA-Z0-9\-_]+)/i
+      );
+      if (m && m[1]) {
+        const val = m[1].trim().toUpperCase();
+        changes.sku = val;
+        summaryLines.push(`Kode SKU → ${val}`);
+        continue;
+      }
+    }
+
+    // 12. PRODUCT NAME (Nama Barang)
+    if (/\b(?:nama(?:\s+barang|\s+produk)?|rename|ganti\s+nama|ubah\s+nama)\b/i.test(lower)) {
+      const m = clause.match(
+        /(?:jadi|menjadi|ke)\s+([a-zA-Z0-9\s&()\-]{2,50})$/i
+      );
+      if (m && m[1]) {
+        const val = titleCaseClean(m[1].replace(/[.!?]+$/, ''));
+        if (val) {
+          changes.name = val;
+          summaryLines.push(`Nama Barang → ${val}`);
+          continue;
+        }
+      }
+    }
+  }
+
+  return {
+    matchedProduct: targetProduct,
+    changes,
+    summaryLines,
+    cleanedText,
+  };
+}
+

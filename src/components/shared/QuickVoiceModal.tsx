@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useKasra } from '@/lib/store/KasraContext';
 import { parseOmniboxInput, autocorrectIndonesianVoice } from '@/lib/ai/parser';
+import { VoiceMicOrb } from '@/components/ui/VoiceMicVisuals';
 import {
   Mic,
-  MicOff,
   X,
   CheckCircle2,
 } from 'lucide-react';
@@ -161,29 +161,15 @@ export const QuickVoiceModal: React.FC<QuickVoiceModalProps> = ({
 
         {/* Voice Input Body */}
         <div className="p-6 space-y-5 flex flex-col items-center text-center">
-          {/* Big Recording Button */}
-          <div className="relative my-1">
-            {isRecording && (
-              <span className="absolute inset-0 rounded-full bg-rose-400/30 animate-ping" />
-            )}
-            <button
-              type="button"
-              onClick={toggleRecording}
-              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 shadow-xl relative z-10 ${
-                isRecording
-                  ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
-                  : 'bg-slate-900 hover:bg-slate-800 text-white shadow-lg active:scale-95'
-              }`}
-            >
-              {isRecording ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-500 font-medium">
-            {isRecording
-              ? 'Mendengarkan ucapan Anda... Klik tombol untuk berhenti.'
-              : 'Klik tombol mikrofon untuk mulai berbicara, atau ketik perintah di kolom bawah:'}
-          </p>
+          {/* Sleek Live Voice Mic Visualizer (Never Muted Icon) */}
+          <VoiceMicOrb
+            isRecording={isRecording}
+            onToggle={toggleRecording}
+            transcript={transcript}
+            accent="emerald"
+            idleHint="Klik tombol mikrofon untuk mulai berbicara, atau ketik perintah di kolom bawah:"
+            listeningHint="Sedang mendengarkan ucapan Anda... Klik mikrofon untuk selesai."
+          />
 
           {/* Transcript Area */}
           <div className="w-full space-y-2">

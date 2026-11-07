@@ -109,12 +109,18 @@ export interface StockChangeDraft {
   productId?: string;
   productName: string;
   category: string;
+  subcategory?: string;
   location?: string;
   unit: string;
   quantityDelta: number; // positive for addition, negative for deduction
   pricePerUnit?: number;
+  hppAmount?: number;
+  sellingPrice?: number;
+  minStockAlert?: number;
+  initialStock?: number;
   expiryDate?: string;
   isNewProduct?: boolean;
+  confirmedNewProduct?: boolean;
   insufficientStockWarning?: {
     currentStock: number;
     requestedQty: number;
