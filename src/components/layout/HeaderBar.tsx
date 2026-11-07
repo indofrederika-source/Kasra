@@ -89,7 +89,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             className={`md:hidden w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-sm cursor-pointer ${
               isDark
                 ? 'bg-[#22396F] border border-[#345294] text-[#FCF1D0]'
-                : 'bg-gradient-to-br from-[#1E1B4B] to-[#4C1D95] text-white'
+                : 'bg-gradient-to-br from-[#234720] to-[#152E14] text-[#F8FAF6]'
             }`}
             title="Ruang Kerja KASRA"
           >
@@ -207,7 +207,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               title="Tema Terang"
               className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                 !isDark
-                  ? 'bg-[#311068] text-white shadow-xs'
+                  ? 'bg-[#1E3D1C] text-[#F8FAF6] shadow-xs'
                   : 'text-[#FCF1D0]/75 hover:text-[#FCF1D0]'
               }`}
             >
@@ -224,7 +224,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] sm:text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0 ${
                 isDark
                   ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
-                  : 'bg-[#18181B] hover:bg-slate-800 text-white'
+                  : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6]'
               }`}
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
@@ -290,7 +290,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 className={`w-6 h-6 rounded-full font-extrabold text-[11px] flex items-center justify-center shrink-0 ${
                   isDark
                     ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
-                    : 'bg-gradient-to-br from-[#311068] to-[#7C3AED] text-white'
+                    : 'bg-gradient-to-br from-[#234720] to-[#152E14] text-[#F8FAF6]'
                 }`}
               >
                 {storeDisplayName.charAt(0).toUpperCase()}
@@ -312,7 +312,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                       className={`w-9 h-9 rounded-full font-bold text-xs flex items-center justify-center ${
                         isDark
                           ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
-                          : 'bg-gradient-to-br from-[#311068] to-[#4C1D95] text-white'
+                          : 'bg-gradient-to-br from-[#234720] to-[#152E14] text-[#F8FAF6]'
                       }`}
                     >
                       {userDisplayName.charAt(0).toUpperCase()}

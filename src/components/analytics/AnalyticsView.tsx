@@ -225,7 +225,7 @@ export const AnalyticsView: React.FC = () => {
   // Operational & Expense Category Allocation (Donut / Pie) — empty when 0 expenses
   const categoryDonutData = useMemo(() => {
     const catMap: Record<string, number> = {};
-    const colors = ['#84cc16', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899', '#64748b'];
+    const colors = ['#84cc16', '#f59e0b', '#06b6d4', '#2F7D32', '#ec4899', '#64748b'];
 
     transactions
       .filter((t) => t.type === 'expense' && t.amount > 0)

@@ -41,7 +41,7 @@ interface DashboardViewProps {
 const COST_COLORS = [
   'bg-amber-400',
   'bg-emerald-500',
-  'bg-indigo-500',
+  'bg-[#2F7D32]',
   'bg-sky-500',
   'bg-rose-500',
   'bg-teal-500',
@@ -393,7 +393,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           className={`rounded-2xl px-3.5 py-2.5 shadow-xl text-xs space-y-1 pointer-events-none select-none border ${
             isDark
               ? 'bg-[#0D1C42] text-[#FCF1D0] border-[#345294]'
-              : 'bg-[#18181B] text-white border-slate-800'
+              : 'bg-[#1E3D1C] text-[#F8FAF6] border-[#2F572D]'
           }`}
         >
           <div className="text-[10px] opacity-75 font-medium">{data.fullDate}</div>
@@ -451,7 +451,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               className={`absolute right-1.5 px-3.5 py-1 rounded-full disabled:opacity-40 text-[11px] font-bold transition-all cursor-pointer ${
                 isDark
                   ? 'bg-[#FCF1D0] text-[#0D1C42]'
-                  : 'bg-[#18181B] text-white'
+                  : 'bg-[#1E3D1C] text-[#F8FAF6]'
               }`}
             >
               Kirim
@@ -484,13 +484,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             className={`relative overflow-hidden rounded-[32px] p-6 shadow-xl transition-all ${
               isDark
                 ? 'bg-gradient-to-br from-[#22396F] via-[#284482] to-[#1A2E5E] text-[#FCF1D0] border border-[#3858A0] shadow-[#071026]/50'
-                : 'bg-gradient-to-br from-[#130924] via-[#2B125A] to-[#4A1D96] text-white shadow-indigo-950/20'
+                : 'bg-gradient-to-br from-[#224520] via-[#1C3A1A] to-[#142B13] text-[#F8FAF6] shadow-[#142B13]/25'
             }`}
           >
             {/* Subtle Ambient Glow */}
             <div
               className={`pointer-events-none absolute -right-12 -top-12 w-44 h-44 rounded-full blur-3xl opacity-25 ${
-                isDark ? 'bg-[#FCF1D0]' : 'bg-purple-400'
+                isDark ? 'bg-[#FCF1D0]' : 'bg-[#57C446]'
               }`}
             />
 
@@ -592,7 +592,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         isActive
                           ? isDark
                             ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                            : 'bg-[#18181B] text-white shadow-xs'
+                            : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-xs'
                           : isDark
                           ? 'bg-[#172A57] text-[#FCF1D0]/80 hover:text-[#FCF1D0]'
                           : 'bg-slate-100 text-slate-500 hover:text-slate-900'
@@ -842,7 +842,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       isActive
                         ? isDark
                           ? 'bg-[#FCF1D0] text-[#0D1C42] font-extrabold shadow-sm'
-                          : 'bg-[#18181B] text-white font-extrabold shadow-xs'
+                          : 'bg-[#1E3D1C] text-[#F8FAF6] font-extrabold shadow-xs'
                         : 'text-slate-500 hover:text-slate-900'
                     }`}
                   >

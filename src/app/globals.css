@@ -2,20 +2,20 @@
 
 @layer base {
   :root {
-    --background: #F3F4F8;
-    --foreground: #0F172A;
-    --sidebar: #FFFFFF;
-    --header: rgba(255, 255, 255, 0.85);
-    --card: #FFFFFF;
-    --card-hover: #F8FAFC;
-    --inner-card: #F3F4F8;
-    --border: #E6E8F0;
-    --border-light: #F1F5F9;
-    --pill-bg: #F3F4F8;
-    --pill-border: #E2E8F0;
-    --brand-mark: #22396F;
-    --accent-amber: #F59E0B;
-    --accent-green: #10B981;
+    --background: #EFF2EC;
+    --foreground: #142413;
+    --sidebar: #F8FAF6;
+    --header: rgba(239, 242, 236, 0.86);
+    --card: #F8FAF6;
+    --card-hover: #F2F5EF;
+    --inner-card: #EDF1E9;
+    --border: #DEE5D9;
+    --border-light: #E7ECE3;
+    --pill-bg: #E5EAE0;
+    --pill-border: #D8E0D2;
+    --brand-mark: #1E3D1C;
+    --accent-amber: #D97706;
+    --accent-green: #52B743;
   }
 
   html.dark-theme {
@@ -44,6 +44,17 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* Subtle ambient botanical radial wash in Light Mode */
+html:not(.dark-theme) body {
+  background-color: #EFF2EC;
+  background-image:
+    radial-gradient(at 15% 15%, rgba(163, 196, 154, 0.22) 0px, transparent 50%),
+    radial-gradient(at 85% 30%, rgba(180, 206, 170, 0.18) 0px, transparent 55%),
+    radial-gradient(at 50% 90%, rgba(163, 196, 154, 0.15) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: #142413;
+}
+
 /* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
@@ -55,7 +66,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #C4D0BE;
   border-radius: 9999px;
 }
 
@@ -64,7 +75,125 @@ html.dark-theme ::-webkit-scrollbar-thumb {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #9CAF94;
+}
+
+/* ============================================================================
+   GLOBAL LIGHT MODE BOTANICAL SAGE PALETTE HARMONIZATION
+   Canvas          : #EFF2EC (Warm Sage Alabaster)
+   Primary Deep    : #1E3D1C (Deep Forest Green)
+   Leaf Accent     : #52B743 / #5EC84D (Vibrant Leaf Green)
+   Surface Card    : #F8FAF6 (Soft Ivory Sage)
+   Inner Surface   : #EDF1E9 / #E5EAE0
+   Border          : #DEE5D9
+   Text Primary    : #142413
+   Text Muted      : #627060
+   ============================================================================ */
+html:not(.dark-theme) .bg-white {
+  background-color: #F8FAF6 !important;
+}
+
+html:not(.dark-theme) .bg-white\/80,
+html:not(.dark-theme) .bg-white\/90,
+html:not(.dark-theme) .bg-white\/95 {
+  background-color: rgba(248, 250, 246, 0.92) !important;
+}
+
+html:not(.dark-theme) .bg-slate-50,
+html:not(.dark-theme) .bg-slate-50\/60,
+html:not(.dark-theme) .bg-slate-50\/70,
+html:not(.dark-theme) .bg-slate-50\/80 {
+  background-color: #EFF3EC !important;
+}
+
+html:not(.dark-theme) .bg-slate-100,
+html:not(.dark-theme) .bg-slate-100\/80,
+html:not(.dark-theme) .bg-slate-100\/90 {
+  background-color: #E5EAE0 !important;
+}
+
+html:not(.dark-theme) .hover\:bg-slate-50:hover,
+html:not(.dark-theme) .hover\:bg-slate-50\/80:hover,
+html:not(.dark-theme) .hover\:bg-slate-100:hover,
+html:not(.dark-theme) .hover\:bg-slate-100\/80:hover,
+html:not(.dark-theme) .hover\:bg-slate-100\/90:hover {
+  background-color: #E3E9DE !important;
+}
+
+html:not(.dark-theme) .hover\:bg-slate-200:hover,
+html:not(.dark-theme) .hover\:bg-slate-200\/80:hover {
+  background-color: #D8E1D2 !important;
+}
+
+html:not(.dark-theme) .text-slate-950,
+html:not(.dark-theme) .text-slate-900,
+html:not(.dark-theme) .text-slate-800 {
+  color: #142413 !important;
+}
+
+html:not(.dark-theme) .text-slate-700,
+html:not(.dark-theme) .text-slate-600 {
+  color: #384936 !important;
+}
+
+html:not(.dark-theme) .text-slate-500,
+html:not(.dark-theme) .text-slate-400 {
+  color: #6B7B68 !important;
+}
+
+html:not(.dark-theme) .border-slate-200,
+html:not(.dark-theme) .border-slate-200\/50,
+html:not(.dark-theme) .border-slate-200\/60,
+html:not(.dark-theme) .border-slate-200\/70,
+html:not(.dark-theme) .border-slate-200\/80,
+html:not(.dark-theme) .border-slate-200\/90,
+html:not(.dark-theme) .border-slate-300 {
+  border-color: #DEE5D9 !important;
+}
+
+html:not(.dark-theme) .border-slate-100 {
+  border-color: #E7ECE3 !important;
+}
+
+html:not(.dark-theme) .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html:not(.dark-theme) .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E4EAE0 !important;
+}
+
+html:not(.dark-theme) .bg-emerald-50,
+html:not(.dark-theme) .bg-emerald-50\/70 {
+  background-color: #E4F0E0 !important;
+}
+
+html:not(.dark-theme) .text-emerald-700,
+html:not(.dark-theme) .text-emerald-600 {
+  color: #21571D !important;
+}
+
+html:not(.dark-theme) .border-emerald-200 {
+  border-color: #C5DFBE !important;
+}
+
+html:not(.dark-theme) .bg-indigo-600 {
+  background-color: #1E3D1C !important;
+}
+html:not(.dark-theme) .hover\:bg-indigo-700:hover {
+  background-color: #162E14 !important;
+}
+html:not(.dark-theme) .bg-indigo-50,
+html:not(.dark-theme) .bg-indigo-50\/40,
+html:not(.dark-theme) .bg-indigo-50\/90 {
+  background-color: #E4EFE0 !important;
+}
+html:not(.dark-theme) .text-indigo-700,
+html:not(.dark-theme) .text-indigo-600,
+html:not(.dark-theme) .text-indigo-950 {
+  color: #1E3D1C !important;
+}
+html:not(.dark-theme) .border-indigo-200,
+html:not(.dark-theme) .border-indigo-200\/80,
+html:not(.dark-theme) .border-indigo-300 {
+  border-color: #C4D9BE !important;
 }
 
 /* ============================================================================
@@ -76,7 +205,8 @@ html.dark-theme ::-webkit-scrollbar-thumb {
    ============================================================================ */
 html.dark-theme body,
 html.dark-theme .bg-\[\#F8FAFC\],
-html.dark-theme .bg-\[\#F3F4F8\] {
+html.dark-theme .bg-\[\#F3F4F8\],
+html.dark-theme .bg-\[\#EFF2EC\] {
   background-color: #0D1C42 !important;
   color: #FCF1D0 !important;
 }
@@ -299,6 +429,11 @@ html.dark-theme select {
   color: #FCF1D0;
 }
 
+html.dark-theme select option {
+  background-color: #0D1C42;
+  color: #FCF1D0;
+}
+
 html.dark-theme input::placeholder,
 html.dark-theme textarea::placeholder {
   color: #93A6D1 !important;
@@ -331,4 +466,56 @@ html.dark-theme textarea::placeholder {
 
 .animate-kasra-sonar {
   animation: kasra-sonar 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes kasra-float-left {
+  0%, 100% {
+    transform: translateY(0px) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-4.5deg);
+  }
+}
+
+@keyframes kasra-float-right {
+  0%, 100% {
+    transform: translateY(0px) rotate(6deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(4.5deg);
+  }
+}
+
+@keyframes kasra-float-badge {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes kasra-caret-blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+.animate-kasra-float-left {
+  animation: kasra-float-left 6.5s ease-in-out infinite;
+}
+
+.animate-kasra-float-right {
+  animation: kasra-float-right 7.2s ease-in-out infinite;
+}
+
+.animate-kasra-float-badge {
+  animation: kasra-float-badge 5.4s ease-in-out infinite;
+}
+
+.animate-kasra-caret {
+  animation: kasra-caret-blink 1.15s ease-in-out infinite;
 }

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { KasraProvider, useKasra } from '@/lib/store/KasraContext';
 import { TransactionType } from '@/types';
 import { AuthView } from '@/components/auth/AuthView';
+import { LandingView } from '@/components/landing/LandingView';
 import { SidebarRail } from '@/components/layout/SidebarRail';
 import { HeaderBar } from '@/components/layout/HeaderBar';
 import { DashboardView } from '@/components/dashboard/DashboardView';
@@ -37,12 +38,11 @@ function KasraAppContent() {
       className={`flex h-screen w-screen overflow-hidden transition-colors ${
         theme === 'dark'
           ? 'bg-[#0D1C42] text-[#FCF1D0]'
-          : 'bg-[#F3F4F8] text-slate-900'
+          : 'bg-[#EFF2EC] text-[#142413]'
       }`}
     >
-      {/* 1. Left Sidebar Navigation (Desktop) & Bottom Bar with Center FAB (Mobile) */}
+      {/* 1. Left Sidebar Navigation (Desktop) & Bottom Bar (Mobile) */}
       <SidebarRail
-        onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
         onOpenScan={() => setIsScanOpen(true)}
       />
 
@@ -52,7 +52,6 @@ function KasraAppContent() {
         <HeaderBar
           onOpenVoice={() => setIsVoiceOpen(true)}
           onOpenScan={() => setIsScanOpen(true)}
-          onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
           isCalculatorOpen={isCalculatorOpen}
           onToggleCalculator={() => setIsCalculatorOpen((prev) => !prev)}
         />
@@ -124,20 +123,41 @@ function KasraAppContent() {
 
 function KasraWorkspaceShell() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [authScreenState, setAuthScreenState] = useState<{
+    showAuth: boolean;
+    mode: 'login' | 'register';
+  }>({ showAuth: false, mode: 'login' });
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen bg-[#F3F4F8] flex flex-col items-center justify-center gap-3 text-slate-600 font-sans">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1E2BFF] to-[#4C1D95] text-white flex items-center justify-center shadow-md animate-pulse">
-          <KasraLogo className="w-7 h-7 text-white" />
+      <div className="h-screen w-screen bg-[#EFF2EC] flex flex-col items-center justify-center gap-3 text-[#384936] font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#21421E] to-[#152D14] text-[#F8FAF6] flex items-center justify-center shadow-md animate-pulse">
+          <KasraLogo className="w-7 h-7 text-[#F8FAF6]" />
         </div>
-        <p className="text-xs font-mono text-slate-500">Memeriksa autentikasi sesi KASRA...</p>
+        <p className="text-xs font-mono text-[#6B7B68]">Memeriksa autentikasi sesi KASRA...</p>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <AuthView />;
+    if (!authScreenState.showAuth) {
+      return (
+        <LandingView
+          onOpenAuth={(selectedMode) =>
+            setAuthScreenState({ showAuth: true, mode: selectedMode })
+          }
+        />
+      );
+    }
+
+    return (
+      <AuthView
+        initialMode={authScreenState.mode}
+        onBackToLanding={() =>
+          setAuthScreenState((prev) => ({ ...prev, showAuth: false }))
+        }
+      />
+    );
   }
 
   return (
@@ -151,7 +171,7 @@ export default function KasraPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="h-screen w-screen bg-[#F3F4F8] flex items-center justify-center text-slate-500 text-xs font-mono">
+        <div className="h-screen w-screen bg-[#EFF2EC] flex items-center justify-center text-[#6B7B68] text-xs font-mono">
           Memuat Ruang Kerja KASRA...
         </div>
       }

@@ -236,7 +236,7 @@ export const CashView: React.FC<CashViewProps> = ({
               className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer ${
                 theme === 'dark'
                   ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
-                  : 'bg-[#18181B] hover:bg-slate-800 text-white'
+                  : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6]'
               }`}
             >
               <Plus className="w-4 h-4 stroke-[3] shrink-0" />

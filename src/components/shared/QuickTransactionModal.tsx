@@ -362,7 +362,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                     isSelected
                       ? isDark
                         ? 'bg-[#0D1C42] border-[#FCF1D0] shadow-sm scale-[1.03]'
-                        : 'bg-[#F3E8FF]/80 border-[#8B5CF6] shadow-xs scale-[1.03]'
+                        : 'bg-[#E4F0E0] border-[#57C446] shadow-xs scale-[1.03]'
                       : 'border-transparent hover:bg-slate-500/5'
                   }`}
                 >
@@ -376,7 +376,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                       isSelected
                         ? isDark
                           ? 'text-[#FCF1D0] font-bold'
-                          : 'text-[#6D28D9] font-bold'
+                          : 'text-[#1E3D1C] font-bold'
                         : isDark
                         ? 'text-[#FCF1D0]/75'
                         : 'text-slate-600'
@@ -628,7 +628,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             className={`w-full py-4 rounded-full text-sm font-bold transition-all shadow-lg active:scale-[0.99] disabled:opacity-40 cursor-pointer ${
               isDark
                 ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42] shadow-[#071026]/40'
-                : 'bg-[#18181B] hover:bg-slate-800 text-white shadow-slate-900/20'
+                : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6] shadow-[#1E3D1C]/25'
             }`}
           >
             Simpan Transaksi {currentAmount > 0 ? `(${formatRupiah(currentAmount)})` : ''}

@@ -100,7 +100,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
             className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all shadow-md group ${
               isDark
                 ? 'bg-[#0D1C42] border border-[#345294] text-[#FCF1D0]'
-                : 'bg-gradient-to-br from-[#1E1B4B] to-[#4C1D95] border border-indigo-900 text-white'
+                : 'bg-gradient-to-br from-[#234720] to-[#152E14] border border-[#2F572D] text-[#F8FAF6]'
             }`}
             title={`${profile.storeName || 'Toko'} — Ruang Kerja KASRA`}
           >
@@ -110,20 +110,6 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
               }`}
             />
           </div>
-
-          {/* Center-style Prominent Action Button on Desktop Rail */}
-          <button
-            type="button"
-            onClick={onOpenQuickAdd}
-            title="Catat Transaksi Cepat"
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer active:scale-95 group ${
-              isDark
-                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-[0_6px_18px_rgba(252,241,208,0.25)] hover:opacity-95'
-                : 'bg-[#18181B] text-white shadow-[0_8px_20px_rgba(24,24,27,0.3)] hover:bg-slate-800'
-            }`}
-          >
-            <Plus className="w-5 h-5 stroke-[2.6]" />
-          </button>
 
           {/* Navigation Icon List */}
           <nav className="flex flex-col items-center gap-2 w-full pt-1">
@@ -140,7 +126,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                     isActive
                       ? isDark
                         ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
-                        : 'bg-indigo-50/90 text-[#311068]'
+                        : 'bg-[#E4EFE0] text-[#1E3D1C]'
                       : isDark
                       ? 'text-[#B8C4E0] hover:text-[#FCF1D0] hover:bg-[#172A57]'
                       : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100/80'
@@ -155,7 +141,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                   {isActive && (
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        isDark ? 'bg-[#FCF1D0]' : 'bg-[#311068]'
+                        isDark ? 'bg-[#FCF1D0]' : 'bg-[#1E3D1C]'
                       }`}
                     />
                   )}
@@ -254,7 +240,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
             className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95 cursor-pointer ${
               isDark
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-[0_8px_25px_rgba(7,16,38,0.5)] ring-4 ring-[#22396F]'
-                : 'bg-[#18181B] text-white shadow-[0_10px_24px_rgba(24,24,27,0.35)] ring-4 ring-white'
+                : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-[0_10px_24px_rgba(30,61,28,0.35)] ring-4 ring-[#F8FAF6]'
             }`}
             title="Catat Transaksi Cepat"
           >
