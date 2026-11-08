@@ -136,11 +136,17 @@ export function generateSessionToken(): string {
 }
 
 /**
- * Validasi Format Email
+ * Validasi Format Email Ketat (Client-side Pre-check)
  */
 export function validateEmail(email: string): boolean {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email.trim().toLowerCase());
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || normalized.includes('..')) return false;
+  const re =
+    /^[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]{0,62}[a-zA-Z0-9])?@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  if (!re.test(normalized)) return false;
+  const domain = normalized.split('@')[1] || '';
+  const tld = domain.split('.').pop() || '';
+  return /^[a-z]{2,24}$/.test(tld);
 }
 
 /**

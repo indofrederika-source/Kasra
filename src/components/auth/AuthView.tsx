@@ -13,9 +13,11 @@ import {
   AlertCircle,
   CheckCircle2,
   KeyRound,
-  Info,
   Moon,
   Sun,
+  ShieldCheck,
+  RefreshCw,
+  Send,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { validatePasswordStrength } from '@/lib/auth/crypto';
@@ -34,8 +36,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
   initialMode = 'login',
   onBackToLanding,
 }) => {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const {
+    login,
+    register,
+    verifyEmailOtp,
+    resendVerificationEmail,
+    sendPasswordResetEmail,
+  } = useAuth();
+
+  const [mode, setMode] = useState<'login' | 'register' | 'verify'>(initialMode);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -52,12 +61,28 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [suggestedEmail, setSuggestedEmail] = useState<string | null>(null);
+
+  // Email verification state
+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isResending, setIsResending] = useState(false);
+
+  // Forgot password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState<{
+    type: 'error' | 'success';
+    msg: string;
+  } | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   // UI state
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showForgotModal, setShowForgotModal] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -71,6 +96,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   }, []);
 
+  // Countdown timer for Resend Verification button
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
   const handleToggleTheme = (nextDark: boolean) => {
     setIsDark(nextDark);
     try {
@@ -81,13 +115,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // Password strength calculation
   const pwdStrength = validatePasswordStrength(regPassword);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setInfoMessage(null);
+    setAlreadyRegisteredEmail(null);
     setIsSubmitting(true);
 
     try {
@@ -98,7 +132,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
       });
 
       if (!res.success) {
-        setErrorMessage(res.error || 'Gagal masuk. Periksa kembali email dan kata sandi Anda.');
+        if (res.requiresEmailVerification && res.email) {
+          setPendingVerifyEmail(res.email);
+          setMode('verify');
+          setErrorMessage(null);
+          setInfoMessage(
+            `Akun "${res.email}" sudah terdaftar dan aman! Anda hanya perlu mengonfirmasi email sebelum masuk pertama kali. Cek Kotak Masuk atau folder Spam email Anda, atau klik "Kirim Ulang Email Verifikasi" di bawah.`
+          );
+        } else {
+          setErrorMessage(
+            res.error || 'Gagal masuk. Periksa kembali email dan kata sandi Anda.'
+          );
+        }
       } else {
         onSuccess?.();
       }
@@ -113,6 +158,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setInfoMessage(null);
+    setSuggestedEmail(null);
+    setAlreadyRegisteredEmail(null);
 
     if (regPassword !== regConfirmPassword) {
       setErrorMessage('Konfirmasi kata sandi tidak cocok dengan kata sandi baru.');
@@ -139,7 +186,56 @@ export const AuthView: React.FC<AuthViewProps> = ({
       });
 
       if (!res.success) {
+        if (res.suggestedEmail) {
+          setSuggestedEmail(res.suggestedEmail);
+        }
+        if (res.alreadyRegistered && res.email) {
+          setAlreadyRegisteredEmail(res.email);
+        }
         setErrorMessage(res.error || 'Gagal membuat akun.');
+        return;
+      }
+
+      if (res.requiresEmailVerification && res.email) {
+        setPendingVerifyEmail(res.email);
+        setLoginEmail(res.email);
+        setLoginPassword(regPassword);
+        setResendCooldown(45);
+        setMode('verify');
+        setInfoMessage(
+          `Kami telah mengirim email verifikasi ke ${res.email}. Klik tautan di dalam email tersebut (cek juga folder Spam/Promosi) untuk mengaktifkan akun toko Anda!`
+        );
+        return;
+      }
+
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch {
+        // ignore
+      }
+      onSuccess?.();
+    } catch {
+      setErrorMessage('Terjadi kesalahan saat memproses pendaftaran.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode.trim()) return;
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const res = await verifyEmailOtp(pendingVerifyEmail, otpCode);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Kode verifikasi tidak valid.');
       } else {
         try {
           confetti({
@@ -153,9 +249,55 @@ export const AuthView: React.FC<AuthViewProps> = ({
         onSuccess?.();
       }
     } catch {
-      setErrorMessage('Terjadi kesalahan saat memproses pendaftaran.');
+      setErrorMessage('Gagal memverifikasi kode. Silakan coba lagi.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!pendingVerifyEmail || resendCooldown > 0 || isResending) return;
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setIsResending(true);
+
+    try {
+      const res = await resendVerificationEmail(pendingVerifyEmail);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Gagal mengirim ulang email verifikasi.');
+      } else {
+        setResendCooldown(60);
+        setInfoMessage(
+          res.message ||
+            `Email verifikasi baru telah dikirim ke ${pendingVerifyEmail}. Cek Kotak Masuk & Spam.`
+        );
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotStatus(null);
+    setIsSendingReset(true);
+    try {
+      const res = await sendPasswordResetEmail(forgotEmail);
+      if (!res.success) {
+        setForgotStatus({
+          type: 'error',
+          msg: res.error || 'Gagal mengirim email pemulihan kata sandi.',
+        });
+      } else {
+        setForgotStatus({
+          type: 'success',
+          msg:
+            res.message ||
+            'Tautan reset kata sandi telah dikirim ke email Anda. Cek Kotak Masuk / Spam.',
+        });
+      }
+    } finally {
+      setIsSendingReset(false);
     }
   };
 
@@ -164,6 +306,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
       ? 'bg-[#172A57] border-[#345294] text-[#FCF1D0] placeholder:text-[#93A6D1] focus:border-[#FCF1D0]'
       : 'bg-[#EFF3EC] border-[#DEE5D9] text-[#142413] placeholder:text-[#6B7B68] focus:border-[#1E3D1C]'
   }`;
+
+  const primaryBtnClass = isDark
+    ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
+    : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6]';
 
   return (
     <div
@@ -246,7 +392,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
       </div>
 
       <div className="relative w-full max-w-[460px] z-10">
-        <div>
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
           <div
@@ -282,57 +427,110 @@ export const AuthView: React.FC<AuthViewProps> = ({
               : 'bg-[#F8FAF6] border-[#DEE5D9] shadow-[0_8px_30px_rgba(20,36,19,0.05)]'
           }`}
         >
-          {/* Segmented Tab Switcher */}
-          <div
-            className={`grid grid-cols-2 p-1 rounded-2xl mb-6 border ${
-              isDark
-                ? 'bg-[#172A57] border-[#345294]'
-                : 'bg-[#E5EAE0] border-[#D8E0D2]'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                setErrorMessage(null);
-              }}
-              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                mode === 'login'
-                  ? isDark
-                    ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                    : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
-                  : isDark
-                  ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
-                  : 'text-[#627060] hover:text-[#142413]'
+          {/* Segmented Tab Switcher (Login vs Register) */}
+          {mode !== 'verify' && (
+            <div
+              className={`grid grid-cols-2 p-1 rounded-2xl mb-6 border ${
+                isDark
+                  ? 'bg-[#172A57] border-[#345294]'
+                  : 'bg-[#E5EAE0] border-[#D8E0D2]'
               }`}
             >
-              Masuk Akun
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('register');
-                setErrorMessage(null);
-              }}
-              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                mode === 'register'
-                  ? isDark
-                    ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                    : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
-                  : isDark
-                  ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
-                  : 'text-[#627060] hover:text-[#142413]'
-              }`}
-            >
-              Daftar Toko Baru
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorMessage(null);
+                  setInfoMessage(null);
+                  setSuggestedEmail(null);
+                  setAlreadyRegisteredEmail(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  mode === 'login'
+                    ? isDark
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                      : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
+                    : isDark
+                    ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
+                    : 'text-[#627060] hover:text-[#142413]'
+                }`}
+              >
+                Masuk Akun
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setErrorMessage(null);
+                  setInfoMessage(null);
+                  setSuggestedEmail(null);
+                  setAlreadyRegisteredEmail(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  mode === 'register'
+                    ? isDark
+                      ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                      : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
+                    : isDark
+                    ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
+                    : 'text-[#627060] hover:text-[#142413]'
+                }`}
+              >
+                Daftar Toko Baru
+              </button>
+            </div>
+          )}
 
           {/* Error Alert Banner */}
           {errorMessage && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800 animate-fadeIn">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium">{errorMessage}</div>
+            <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-2 text-xs text-rose-800 animate-fadeIn">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+              </div>
+
+              {suggestedEmail && mode === 'register' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegEmail(suggestedEmail);
+                    setSuggestedEmail(null);
+                    setErrorMessage(null);
+                  }}
+                  className="ml-6 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-rose-300 text-rose-800 font-bold text-[11px] hover:bg-rose-100 transition-colors cursor-pointer"
+                >
+                  <span>Gunakan &ldquo;{suggestedEmail}&rdquo;</span>
+                </button>
+              )}
+
+              {alreadyRegisteredEmail && (
+                <div className="ml-6 flex flex-wrap items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail(alreadyRegisteredEmail);
+                      setMode('login');
+                      setErrorMessage(null);
+                      setAlreadyRegisteredEmail(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-rose-300 text-rose-900 font-bold text-[11px] hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    <span>Masuk dengan {alreadyRegisteredEmail}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingVerifyEmail(alreadyRegisteredEmail);
+                      setMode('verify');
+                      setErrorMessage(null);
+                      setAlreadyRegisteredEmail(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-rose-300 text-rose-900 font-bold text-[11px] hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    <span>Verifikasi Email Ini</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -340,14 +538,116 @@ export const AuthView: React.FC<AuthViewProps> = ({
           {infoMessage && (
             <div className="mb-5 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-800 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium">{infoMessage}</div>
+              <div className="flex-1 font-medium leading-relaxed">{infoMessage}</div>
             </div>
           )}
 
           {/* ======================================================== */}
-          {/* LOGIN FORM */}
+          {/* MODE 1: EMAIL VERIFICATION SCREEN (Real Email Ownership) */}
           {/* ======================================================== */}
-          {mode === 'login' ? (
+          {mode === 'verify' ? (
+            <div className="space-y-4">
+              <div className="text-center space-y-1.5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto mb-2">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h2 className="text-base font-extrabold text-slate-900">
+                  Verifikasi Email Aktif Anda
+                </h2>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Untuk memastikan akun benar-benar milik Anda dan tersimpan permanen di cloud, aktifkan email:
+                </p>
+                <div className="inline-block px-3.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold font-mono text-slate-900">
+                  {pendingVerifyEmail}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
+                <div className="font-bold text-slate-900">Langkah Aktivasi Cepat:</div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed">
+                  <li>
+                    Buka aplikasi email Anda (Gmail/Yahoo/Outlook), cek <strong>Kotak Masuk</strong> maupun folder <strong>Spam / Promosi</strong>.
+                  </li>
+                  <li>
+                    Klik tombol/tautan <strong>Confirm your mail</strong> di dalam email tersebut — Anda akan langsung otomatis masuk ke KASRA.
+                  </li>
+                  <li>
+                    Atau jika email berisi kode angka OTP, masukkan kodenya di bawah ini:
+                  </li>
+                </ol>
+              </div>
+
+              {/* Optional OTP Input Form */}
+              <form onSubmit={handleVerifyOtpSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Kode OTP Verifikasi Email (Opsional jika tidak klik tautan)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
+                    placeholder="Masukkan 6 atau 8 digit kode dari email"
+                    className={`${inputClassName} px-3.5 text-center font-mono text-sm tracking-widest font-bold`}
+                  />
+                </div>
+
+                {otpCode.length >= 6 && (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${primaryBtnClass}`}
+                  >
+                    {isSubmitting ? (
+                      <div className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span>Verifikasi Kode & Masuk</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                )}
+              </form>
+
+              {/* Resend Email & Back to Login Buttons */}
+              <div className="space-y-2 pt-2 border-t border-slate-200/70">
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendCooldown > 0 || isResending}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-55 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  <span>
+                    {resendCooldown > 0
+                      ? `Kirim Ulang Email (${resendCooldown} dtk)`
+                      : 'Kirim Ulang Email Verifikasi'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginEmail(pendingVerifyEmail);
+                    setMode('login');
+                    setErrorMessage(null);
+                    setInfoMessage(
+                      'Jika Anda sudah mengeklik tautan konfirmasi di email, silakan klik tombol Masuk ke Kasra di bawah.'
+                    );
+                  }}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${primaryBtnClass}`}
+                >
+                  <span>Sudah Klik Link di Email? Masuk Sekarang</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : mode === 'login' ? (
+            /* ======================================================== */
+            /* MODE 2: LOGIN FORM */
+            /* ======================================================== */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               {/* Email Input */}
               <div>
@@ -363,7 +663,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="nama@tokoanda.com"
+                    placeholder="nama@gmail.com"
                     autoComplete="email"
                     className={`${inputClassName} pl-10 pr-3.5`}
                   />
@@ -378,7 +678,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setShowForgotModal(true)}
+                    onClick={() => {
+                      setForgotEmail(loginEmail);
+                      setForgotStatus(null);
+                      setShowForgotModal(true);
+                    }}
                     className="text-[11px] font-medium text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
                   >
                     Lupa sandi?
@@ -432,11 +736,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full mt-2 py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer ${
-                  isDark
-                    ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
-                    : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6]'
-                }`}
+                className={`w-full mt-2 py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer ${primaryBtnClass}`}
               >
                 {isSubmitting ? (
                   <div className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
@@ -450,7 +750,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </form>
           ) : (
             /* ======================================================== */
-            /* REGISTER FORM */
+            /* MODE 3: REGISTER FORM (Real Email Validated) */
             /* ======================================================== */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               {/* Nama Pemilik */}
@@ -532,7 +832,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {/* Email */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Akun
+                  Email Aktif (Wajib Email Asli untuk Verifikasi)
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -543,11 +843,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     required
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="nama@tokoanda.com"
+                    placeholder="nama@gmail.com"
                     autoComplete="email"
                     className={`${inputClassName} pl-10 pr-3.5`}
                   />
                 </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Sistem memeriksa server email secara otomatis & mengirim link verifikasi ke kotak masuk Anda.
+                </p>
               </div>
 
               {/* Password */}
@@ -649,17 +952,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full mt-3 py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer ${
-                  isDark
-                    ? 'bg-[#FCF1D0] hover:opacity-95 text-[#0D1C42]'
-                    : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6]'
-                }`}
+                className={`w-full mt-3 py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer ${primaryBtnClass}`}
               >
                 {isSubmitting ? (
                   <div className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>Daftar & Buat Ruang Kerja Toko</span>
+                    <span>Daftar & Kirim Verifikasi Email</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
@@ -672,39 +971,67 @@ export const AuthView: React.FC<AuthViewProps> = ({
         <p className="text-center text-[11px] text-slate-400 mt-5">
           KASRA &copy; {new Date().getFullYear()} • Sistem Kasir & Inventaris Pintar UMKM
         </p>
-        </div>
       </div>
 
-      {/* Forgot Password Modal */}
+      {/* Real Password Reset Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm animate-fadeIn">
           <div
-            className={`rounded-3xl max-w-sm w-full p-6 border shadow-2xl ${
+            className={`rounded-3xl max-w-sm w-full p-6 border shadow-2xl space-y-4 ${
               isDark
                 ? 'bg-[#22396F] border-[#345294] text-[#FCF1D0]'
                 : 'bg-[#F8FAF6] border-[#DEE5D9] text-[#142413]'
             }`}
           >
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mb-3 border border-amber-200">
-              <Info className="w-5 h-5" />
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                Pulihkan Kata Sandi Akun
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed mt-1">
+                Masukkan email asli yang terdaftar pada akun toko Anda. Kami akan mengirimkan tautan pemulihan kata sandi ke kotak masuk Anda.
+              </p>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">
-              Bantuan Akses Akun
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed mb-5">
-              Akun toko Anda tersimpan langsung di peramban perangkat ini. Silakan masuk menggunakan alamat email dan kata sandi yang telah Anda daftarkan, atau buat akun baru pada tab Daftar Toko Baru.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowForgotModal(false)}
-              className={`w-full py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                isDark
-                  ? 'bg-[#FCF1D0] text-[#0D1C42] hover:opacity-95'
-                  : 'bg-[#1E3D1C] text-[#F8FAF6] hover:bg-[#162E14]'
-              }`}
-            >
-              Mengerti & Tutup
-            </button>
+
+            {forgotStatus && (
+              <div
+                className={`p-3 rounded-2xl text-xs font-medium border ${
+                  forgotStatus.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                {forgotStatus.msg}
+              </div>
+            )}
+
+            <form onSubmit={handleForgotSubmit} className="space-y-3">
+              <input
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="nama@gmail.com"
+                className={`${inputClassName} px-3.5`}
+              />
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingReset || !forgotEmail.trim()}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer ${primaryBtnClass}`}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSendingReset ? 'Mengirim...' : 'Kirim Tautan'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

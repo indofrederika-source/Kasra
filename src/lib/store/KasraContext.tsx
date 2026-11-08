@@ -553,22 +553,36 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // If Supabase is configured and user is logged in, sync with cloud data
       if (isSupabaseConfigured && uid && uid !== 'guest') {
-        fetchCloudStoreData(uid).then((cloud) => {
-          if (cloud) {
-            if (cloud.products && cloud.products.length > 0) setProducts(cloud.products);
-            if (cloud.transactions && cloud.transactions.length > 0) setTransactions(cloud.transactions);
-            if (cloud.stockMovements && cloud.stockMovements.length > 0) setStockMovements(cloud.stockMovements);
-            if (cloud.categoryDefinitions && cloud.categoryDefinitions.length > 0) {
-              setCategoryDefinitions(cloud.categoryDefinitions);
-              setCategories(['Semua', ...cloud.categoryDefinitions.map((c) => c.name)]);
+        fetchCloudStoreData(uid)
+          .then((cloud) => {
+            if (cloud) {
+              if (cloud.products && cloud.products.length > 0) setProducts(cloud.products);
+              if (cloud.transactions && cloud.transactions.length > 0)
+                setTransactions(cloud.transactions);
+              if (cloud.stockMovements && cloud.stockMovements.length > 0)
+                setStockMovements(cloud.stockMovements);
+              if (cloud.categoryDefinitions && cloud.categoryDefinitions.length > 0) {
+                setCategoryDefinitions(cloud.categoryDefinitions);
+                setCategories(['Semua', ...cloud.categoryDefinitions.map((c) => c.name)]);
+              }
+              if (cloud.profile) {
+                setProfile((prev) => ({ ...prev, ...cloud.profile }));
+              } else if (user) {
+                // First verified login: persist initial store identity to Supabase profiles table
+                const initialCloudProfile: StoreProfile = {
+                  ...INITIAL_PROFILE,
+                  storeName: user.storeName || INITIAL_PROFILE.storeName,
+                  ownerName: user.name || INITIAL_PROFILE.ownerName,
+                  businessCategory: user.businessCategory || INITIAL_PROFILE.businessCategory,
+                  monthlyTarget: 0,
+                };
+                syncUpsertProfile(uid, initialCloudProfile);
+              }
             }
-            if (cloud.profile) {
-              setProfile((prev) => ({ ...prev, ...cloud.profile }));
-            }
-          }
-        }).catch((err) => {
-          console.warn('[Supabase Sync] Background cloud fetch error:', err);
-        });
+          })
+          .catch((err) => {
+            console.warn('[Supabase Sync] Background cloud fetch error:', err);
+          });
       }
     } catch (e) {
       console.warn('Failed to parse cached local data, using empty defaults', e);
