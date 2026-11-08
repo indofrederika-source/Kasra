@@ -15,6 +15,7 @@ import {
   validateEmail,
   validatePasswordStrength,
 } from '@/lib/auth/crypto';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const STORAGE_KEYS = {
   USERS_DB: 'kasra_users_accounts_v2',
@@ -32,10 +33,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserAccount | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Restore active session on mount (no pre-filled demo accounts)
+  // Restore active session on mount (Supabase session first, then local fallback)
   useEffect(() => {
     const initAuth = async () => {
       try {
+        if (isSupabaseConfigured) {
+          try {
+            const { data: supaSession } = await supabase.auth.getSession();
+            if (supaSession?.session?.user) {
+              const supaUser = supaSession.session.user;
+              const meta = supaUser.user_metadata || {};
+              const restoredUser: UserAccount = {
+                id: supaUser.id,
+                email: supaUser.email || '',
+                name: meta.name || 'Pemilik Toko',
+                storeName: meta.storeName || 'Toko Saya',
+                businessCategory: meta.businessCategory || '',
+                passwordHash: '',
+                passwordSalt: '',
+                createdAt: supaUser.created_at || new Date().toISOString(),
+                lastLoginAt: new Date().toISOString(),
+              };
+              setUser(restoredUser);
+              setIsLoading(false);
+              return;
+            }
+          } catch (supaErr) {
+            console.warn('[Supabase Auth] Session restore fallback to local:', supaErr);
+          }
+        }
+
         let users: UserAccount[] = [];
         const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
 
@@ -156,6 +183,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
+        // 1. Try Supabase Auth First
+        if (isSupabaseConfigured) {
+          try {
+            const { data: supaLoginData, error: supaError } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+
+            if (!supaError && supaLoginData.user) {
+              clearFailedAttempts(email);
+              const meta = supaLoginData.user.user_metadata || {};
+              const loggedInUser: UserAccount = {
+                id: supaLoginData.user.id,
+                email: supaLoginData.user.email || email,
+                name: meta.name || 'Pemilik Toko',
+                storeName: meta.storeName || 'Toko Saya',
+                businessCategory: meta.businessCategory || '',
+                passwordHash: '',
+                passwordSalt: '',
+                createdAt: supaLoginData.user.created_at || new Date().toISOString(),
+                lastLoginAt: new Date().toISOString(),
+              };
+              setUser(loggedInUser);
+              return { success: true };
+            } else if (supaError && supaError.message.toLowerCase().includes('invalid login credentials')) {
+              recordFailedAttempt(email);
+              return { success: false, error: 'Email atau kata sandi tidak sesuai.' };
+            }
+          } catch (supaErr) {
+            console.warn('[Supabase Auth] Login fallback to local:', supaErr);
+          }
+        }
+
+        // 2. Local fallback
         const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
         const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
 
@@ -245,6 +306,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
+        // 1. Try Supabase Auth First
+        if (isSupabaseConfigured) {
+          try {
+            const { data: supaRegData, error: supaError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: {
+                  name,
+                  storeName,
+                  businessCategory,
+                },
+              },
+            });
+
+            if (!supaError && supaRegData.user) {
+              const newUser: UserAccount = {
+                id: supaRegData.user.id,
+                name,
+                email,
+                storeName,
+                businessCategory,
+                passwordHash: '',
+                passwordSalt: '',
+                createdAt: supaRegData.user.created_at || new Date().toISOString(),
+                lastLoginAt: new Date().toISOString(),
+              };
+              setUser(newUser);
+              return { success: true };
+            } else if (supaError) {
+              console.warn('[Supabase Auth] SignUp warning, falling back to local storage:', supaError.message);
+              if (supaError.message.toLowerCase().includes('already registered')) {
+                return {
+                  success: false,
+                  error: 'Alamat email ini sudah terdaftar di database cloud. Silakan langsung masuk.',
+                };
+              }
+            }
+          } catch (supaErr) {
+            console.warn('[Supabase Auth] SignUp fallback:', supaErr);
+          }
+        }
+
+        // 2. Local registration fallback
         const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
         const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
 
@@ -299,7 +404,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Log Out
    */
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('[Supabase Auth] SignOut error:', err);
+      }
+    }
     localStorage.removeItem(STORAGE_KEYS.SESSION);
     sessionStorage.removeItem(STORAGE_KEYS.SESSION);
     setUser(null);
@@ -309,8 +421,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Update Account Profile Details
    */
   const updateAccountProfile = useCallback(
-    (updates: Partial<Pick<UserAccount, 'name' | 'storeName' | 'businessCategory' | 'avatarUrl'>>) => {
+    async (updates: Partial<Pick<UserAccount, 'name' | 'storeName' | 'businessCategory' | 'avatarUrl'>>) => {
       if (!user) return;
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              name: updates.name ?? user.name,
+              storeName: updates.storeName ?? user.storeName,
+              businessCategory: updates.businessCategory ?? user.businessCategory,
+            },
+          });
+          await supabase.from('profiles').upsert({
+            id: user.id,
+            name: updates.name ?? user.name,
+            store_name: updates.storeName ?? user.storeName,
+            business_category: updates.businessCategory ?? user.businessCategory,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (supaErr) {
+          console.warn('[Supabase Auth] Profile update error:', supaErr);
+        }
+      }
 
       try {
         const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);

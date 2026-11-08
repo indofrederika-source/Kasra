@@ -25,6 +25,19 @@ import {
 } from '@/lib/mockData';
 import { formatBatchName, formatDateIndo, formatRupiah, getActiveProductExpiry } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import {
+  fetchCloudStoreData,
+  syncUpsertProduct,
+  syncDeleteProduct,
+  syncInsertTransaction,
+  syncDeleteTransaction,
+  syncInsertStockMovement,
+  syncDeleteStockMovement,
+  syncUpsertProfile,
+  syncUpsertCategory,
+  syncDeleteCategory,
+} from '@/lib/supabase/syncService';
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   inAppEnabled: true,
@@ -466,6 +479,26 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const storedKeys = localStorage.getItem(storageKeys.NOTIF_KEYS);
       notifiedKeysRef.current = new Set(storedKeys ? JSON.parse(storedKeys) : []);
+
+      // If Supabase is configured and user is logged in, sync with cloud data
+      if (isSupabaseConfigured && uid && uid !== 'guest') {
+        fetchCloudStoreData(uid).then((cloud) => {
+          if (cloud) {
+            if (cloud.products && cloud.products.length > 0) setProducts(cloud.products);
+            if (cloud.transactions && cloud.transactions.length > 0) setTransactions(cloud.transactions);
+            if (cloud.stockMovements && cloud.stockMovements.length > 0) setStockMovements(cloud.stockMovements);
+            if (cloud.categoryDefinitions && cloud.categoryDefinitions.length > 0) {
+              setCategoryDefinitions(cloud.categoryDefinitions);
+              setCategories(['Semua', ...cloud.categoryDefinitions.map((c) => c.name)]);
+            }
+            if (cloud.profile) {
+              setProfile((prev) => ({ ...prev, ...cloud.profile }));
+            }
+          }
+        }).catch((err) => {
+          console.warn('[Supabase Sync] Background cloud fetch error:', err);
+        });
+      }
     } catch (e) {
       console.warn('Failed to parse cached local data, using empty defaults', e);
       setProducts([]);
@@ -514,34 +547,49 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const trimmed = mainCategory.trim();
     if (!trimmed || trimmed.toLowerCase() === 'semua') return;
 
+    const existing = categoryDefinitions.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+    const subTrimmed = subcategory?.trim();
+    let defToSync: CategoryDefinition;
+    if (existing) {
+      if (subTrimmed && !existing.subcategories.some((s) => s.toLowerCase() === subTrimmed.toLowerCase())) {
+        defToSync = { ...existing, subcategories: [...existing.subcategories, subTrimmed] };
+      } else {
+        defToSync = existing;
+      }
+    } else {
+      defToSync = {
+        id: `cat-main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: trimmed,
+        subcategories: subTrimmed ? [subTrimmed] : [],
+      };
+    }
+
     setCategoryDefinitions((prev) => {
-      const existing = prev.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
-      if (existing) {
+      const prevExisting = prev.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+      if (prevExisting) {
         if (
-          subcategory &&
-          subcategory.trim() &&
-          !existing.subcategories.some((s) => s.toLowerCase() === subcategory.trim().toLowerCase())
+          subTrimmed &&
+          !prevExisting.subcategories.some((s) => s.toLowerCase() === subTrimmed.toLowerCase())
         ) {
           return prev.map((c) =>
-            c.id === existing.id
-              ? { ...c, subcategories: [...c.subcategories, subcategory.trim()] }
+            c.id === prevExisting.id
+              ? { ...c, subcategories: [...c.subcategories, subTrimmed] }
               : c
           );
         }
         return prev;
       }
-      const newDef: CategoryDefinition = {
-        id: `cat-main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: trimmed,
-        subcategories: subcategory && subcategory.trim() ? [subcategory.trim()] : [],
-      };
-      return [...prev, newDef];
+      return [...prev, defToSync];
     });
 
     setCategories((prev) => {
       if (prev.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return prev;
       return [...prev, trimmed];
     });
+
+    if (uid && uid !== 'guest') {
+      syncUpsertCategory(uid, defToSync);
+    }
   };
 
   const addSubcategory = (mainCategory: string, subcategory: string) => {
@@ -549,32 +597,51 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const cleanSub = subcategory.trim();
     if (!cleanMain || !cleanSub) return;
 
-    setCategoryDefinitions((prev) => {
-      const existing = prev.find((c) => c.name.toLowerCase() === cleanMain.toLowerCase());
-      if (existing) {
-        if (!existing.subcategories.some((s) => s.toLowerCase() === cleanSub.toLowerCase())) {
-          return prev.map((c) =>
-            c.id === existing.id ? { ...c, subcategories: [...c.subcategories, cleanSub] } : c
-          );
-        }
-        return prev;
+    const existing = categoryDefinitions.find((c) => c.name.toLowerCase() === cleanMain.toLowerCase());
+    let defToSync: CategoryDefinition;
+    if (existing) {
+      if (!existing.subcategories.some((s) => s.toLowerCase() === cleanSub.toLowerCase())) {
+        defToSync = { ...existing, subcategories: [...existing.subcategories, cleanSub] };
+      } else {
+        defToSync = existing;
       }
-      const newDef: CategoryDefinition = {
+    } else {
+      defToSync = {
         id: `cat-main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: cleanMain,
         subcategories: [cleanSub],
       };
-      return [...prev, newDef];
+    }
+
+    setCategoryDefinitions((prev) => {
+      const prevExisting = prev.find((c) => c.name.toLowerCase() === cleanMain.toLowerCase());
+      if (prevExisting) {
+        if (!prevExisting.subcategories.some((s) => s.toLowerCase() === cleanSub.toLowerCase())) {
+          return prev.map((c) =>
+            c.id === prevExisting.id ? { ...c, subcategories: [...c.subcategories, cleanSub] } : c
+          );
+        }
+        return prev;
+      }
+      return [...prev, defToSync];
     });
 
     setCategories((prev) => {
       if (prev.some((c) => c.toLowerCase() === cleanMain.toLowerCase())) return prev;
       return [...prev, cleanMain];
     });
+
+    if (uid && uid !== 'guest') {
+      syncUpsertCategory(uid, defToSync);
+    }
   };
 
   const deleteCategory = (categoryIdOrName: string) => {
     const target = categoryIdOrName.trim().toLowerCase();
+    const existing = categoryDefinitions.find(
+      (c) => c.id === categoryIdOrName || c.name.toLowerCase() === target
+    );
+
     setCategoryDefinitions((prev) => {
       const next = prev.filter(
         (c) => c.id !== categoryIdOrName && c.name.toLowerCase() !== target
@@ -582,21 +649,36 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCategories(['Semua', ...next.map((c) => c.name)]);
       return next;
     });
+
+    if (uid && uid !== 'guest' && existing) {
+      syncDeleteCategory(uid, existing.id);
+    }
   };
 
   const deleteSubcategory = (mainCategory: string, subcategory: string) => {
+    const cleanMain = mainCategory.trim();
+    const cleanSub = subcategory.trim();
+    const existing = categoryDefinitions.find((c) => c.name.toLowerCase() === cleanMain.toLowerCase());
+
     setCategoryDefinitions((prev) =>
       prev.map((c) =>
-        c.name.toLowerCase() === mainCategory.toLowerCase()
+        c.name.toLowerCase() === cleanMain.toLowerCase()
           ? {
               ...c,
               subcategories: c.subcategories.filter(
-                (s) => s.toLowerCase() !== subcategory.toLowerCase()
+                (s) => s.toLowerCase() !== cleanSub.toLowerCase()
               ),
             }
           : c
       )
     );
+
+    if (uid && uid !== 'guest' && existing) {
+      syncUpsertCategory(uid, {
+        ...existing,
+        subcategories: existing.subcategories.filter((s) => s.toLowerCase() !== cleanSub.toLowerCase()),
+      });
+    }
   };
 
   // Product Operations
@@ -637,6 +719,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createdAt: new Date().toLocaleString('id-ID'),
       };
       setStockMovements((prev) => [movement, ...prev]);
+
+      if (uid && uid !== 'guest') {
+        syncInsertStockMovement(uid, movement);
+      }
     }
 
     pushNotification({
@@ -646,6 +732,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       message: `Ditambahkan ke ${newProduct.location || 'Gudang Utama'} (${newProduct.currentStock} ${newProduct.unit})`,
       targetTab: 'storage',
     });
+
+    if (uid && uid !== 'guest') {
+      syncUpsertProduct(uid, newProduct);
+    }
 
     return newProduct;
   };
@@ -661,6 +751,8 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const existingProd = products.find((p) => p.id === id);
     const nowIso = getLocalTodayIso();
+    let updatedProdForSync: Product | null = null;
+
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
@@ -683,16 +775,26 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
 
-          return {
+          const nextProd = {
             ...p,
             ...updates,
             batches: syncedBatches,
             updatedAt: nowIso,
           };
+          updatedProdForSync = nextProd;
+          return nextProd;
         }
         return p;
       })
     );
+
+    if (uid && uid !== 'guest') {
+      if (updatedProdForSync) {
+        syncUpsertProduct(uid, updatedProdForSync);
+      } else if (existingProd) {
+        syncUpsertProduct(uid, { ...existingProd, ...updates, updatedAt: nowIso });
+      }
+    }
 
     if (!options?.silent && existingProd) {
       const targetName = updates.name || existingProd.name;
@@ -732,10 +834,16 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    if (uid && uid !== 'guest') {
+      syncDeleteProduct(uid, id);
+    }
   };
 
   const deleteMultipleProducts = (ids: string[]) => {
     setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
+    if (uid && uid !== 'guest') {
+      ids.forEach((id) => syncDeleteProduct(uid, id));
+    }
   };
 
   // Transaction Operations
@@ -821,6 +929,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             createdAt: nowReadable,
           };
           setStockMovements((prev) => [newMovement, ...prev]);
+
+          if (uid && uid !== 'guest') {
+            syncInsertStockMovement(uid, newMovement);
+          }
         }
       }
     }
@@ -833,6 +945,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       createdAt: nowReadable,
     };
     setTransactions((prev) => [newTrx, ...prev]);
+
+    if (uid && uid !== 'guest') {
+      syncInsertTransaction(uid, newTrx);
+    }
 
     pushNotification({
       category: data.type === 'income' ? 'cash_income' : 'cash_expense',
@@ -849,17 +965,28 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+    const existing = transactions.find((t) => t.id === id);
     setTransactions((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
+
+    if (uid && uid !== 'guest' && existing) {
+      syncInsertTransaction(uid, { ...existing, ...updates });
+    }
   };
 
   const deleteTransaction = (id: string) => {
     const target = transactions.find((t) => t.id === id);
     if (target && target.relatedMovementId) {
       setStockMovements((prev) => prev.filter((m) => m.id !== target.relatedMovementId));
+      if (uid && uid !== 'guest') {
+        syncDeleteStockMovement(uid, target.relatedMovementId);
+      }
     }
     setTransactions((prev) => prev.filter((t) => t.id !== id));
+    if (uid && uid !== 'guest') {
+      syncDeleteTransaction(uid, id);
+    }
   };
 
   const deleteMultipleTransactions = (ids: string[]) => {
@@ -868,8 +995,14 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .map((t) => t.relatedMovementId!);
     if (targetMovements.length > 0) {
       setStockMovements((prev) => prev.filter((m) => !targetMovements.includes(m.id)));
+      if (uid && uid !== 'guest') {
+        targetMovements.forEach((movId) => syncDeleteStockMovement(uid, movId));
+      }
     }
     setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
+    if (uid && uid !== 'guest') {
+      ids.forEach((id) => syncDeleteTransaction(uid, id));
+    }
   };
 
   // Stock Movement Log Operations (Buku Mutasi / Kasir Gudang)
@@ -960,6 +1093,10 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
         setTransactions((prev) => [newTrx, ...prev]);
 
+        if (uid && uid !== 'guest') {
+          syncInsertTransaction(uid, newTrx);
+        }
+
         pushNotification({
           category: isExpense ? 'cash_expense' : 'cash_income',
           severity: isExpense ? 'danger' : 'success',
@@ -1000,10 +1137,16 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       createdAt: nowReadable,
     };
     setStockMovements((prev) => [newMov, ...prev]);
+
+    if (uid && uid !== 'guest') {
+      syncInsertStockMovement(uid, newMov);
+    }
+
     return newMov;
   };
 
   const updateStockMovement = (id: string, updates: Partial<StockMovement>) => {
+    const existing = stockMovements.find((m) => m.id === id);
     setStockMovements((prev) =>
       prev.map((m) => {
         if (m.id === id) {
@@ -1015,14 +1158,24 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return m;
       })
     );
+
+    if (uid && uid !== 'guest' && existing) {
+      syncInsertStockMovement(uid, { ...existing, ...updates });
+    }
   };
 
   const deleteStockMovement = (id: string) => {
     const target = stockMovements.find((m) => m.id === id);
     if (target && target.relatedTransactionId) {
       setTransactions((prev) => prev.filter((t) => t.id !== target.relatedTransactionId));
+      if (uid && uid !== 'guest') {
+        syncDeleteTransaction(uid, target.relatedTransactionId);
+      }
     }
     setStockMovements((prev) => prev.filter((m) => m.id !== id));
+    if (uid && uid !== 'guest') {
+      syncDeleteStockMovement(uid, id);
+    }
   };
 
   // Quick Stock Adjustment
@@ -1321,6 +1474,24 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStockMovements((prev) => [...newMovements, ...prev]);
     }
 
+    if (uid && uid !== 'guest') {
+      if (newTransactionsToAdd.length > 0) {
+        newTransactionsToAdd.forEach((t) => syncInsertTransaction(uid, t));
+      }
+      if (newMovements.length > 0) {
+        newMovements.forEach((m) => syncInsertStockMovement(uid, m));
+      }
+      updatedProducts.forEach((p) => {
+        const wasCreated = newlyCreatedProducts.some((np) => np.id === p.id);
+        const wasChanged = draft.stockChanges.some(
+          (sc) => (sc.productId && sc.productId === p.id) || sc.productName.toLowerCase() === p.name.toLowerCase()
+        );
+        if (wasCreated || wasChanged) {
+          syncUpsertProduct(uid, p);
+        }
+      });
+    }
+
     setActiveDraft(null);
   };
 
@@ -1342,6 +1513,9 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           name: updates.ownerName ?? user.name,
           businessCategory: updates.businessCategory ?? user.businessCategory,
         });
+      }
+      if (uid && uid !== 'guest') {
+        syncUpsertProfile(uid, next);
       }
       return next;
     });
