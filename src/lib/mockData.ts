@@ -2,13 +2,24 @@ import { Product, Transaction, StoreProfile, StockMovement, CategoryDefinition }
 
 export const INITIAL_PROFILE: StoreProfile = {
   storeName: 'Toko Baru',
+  handle: '',
+  bio: '',
   businessCategory: '',
   logoUrl: '',
+  bannerUrl: '',
+  operatingHours: 'Setiap Hari, 08.00 - 21.00',
+  province: '',
+  city: '',
   address: '',
+  latitude: null,
+  longitude: null,
   phone: '',
   monthlyTarget: 0,
   ownerName: '',
   bankAccount: '',
+  showPublicCatalog: true,
+  showWhatsappPublic: true,
+  showMapPublic: true,
 };
 
 export const INITIAL_CATEGORY_DEFINITIONS: CategoryDefinition[] = [];

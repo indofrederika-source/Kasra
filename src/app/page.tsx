@@ -12,6 +12,8 @@ import { DashboardView } from '@/components/dashboard/DashboardView';
 import { CashView } from '@/components/cash/CashView';
 import { StorageView } from '@/components/storage/StorageView';
 import { AnalyticsView } from '@/components/analytics/AnalyticsView';
+import { CommunityView } from '@/components/community/CommunityView';
+import { ProfileView, StoreProfileModal } from '@/components/profile/ProfileView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { ConfirmationDraftModal } from '@/components/shared/ConfirmationDraftModal';
 import { QuickVoiceModal } from '@/components/shared/QuickVoiceModal';
@@ -43,15 +45,17 @@ function KasraAppContent() {
     >
       {/* 1. Left Sidebar Navigation (Desktop) & Bottom Bar (Mobile) */}
       <SidebarRail
+        onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
         onOpenScan={() => setIsScanOpen(true)}
       />
 
       {/* 2. Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        {/* Top Header Bar with Theme Toggle (Dark Option 1 / Light Option 2) & Quick Actions */}
+        {/* Top Header Bar with Theme Toggle & Quick Actions */}
         <HeaderBar
           onOpenVoice={() => setIsVoiceOpen(true)}
           onOpenScan={() => setIsScanOpen(true)}
+          onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
           isCalculatorOpen={isCalculatorOpen}
           onToggleCalculator={() => setIsCalculatorOpen((prev) => !prev)}
         />
@@ -81,13 +85,18 @@ function KasraAppContent() {
               />
             )}
             {activeTab === 'analytics' && <AnalyticsView />}
+            {activeTab === 'community' && <CommunityView />}
+            {activeTab === 'profile' && <ProfileView />}
             {activeTab === 'settings' && <SettingsView />}
           </div>
         </main>
       </div>
 
       {/* 3. Global Modals */}
-      {/* Image 1 Combined Numpad + Category Grid + Account Picker Modal */}
+      {/* Public Storefront Viewer Modal (triggered from Community or Followers list) */}
+      <StoreProfileModal />
+
+      {/* Combined Numpad + Category Grid + Account Picker Modal */}
       <QuickTransactionModal
         isOpen={isQuickAddOpen}
         onClose={() => setIsQuickAddOpen(false)}

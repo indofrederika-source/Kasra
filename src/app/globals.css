@@ -519,3 +519,17 @@ html.dark-theme textarea::placeholder {
 .animate-kasra-caret {
   animation: kasra-caret-blink 1.15s ease-in-out infinite;
 }
+
+/* Keep Leaflet map stacking cleanly below KASRA headers (z-30) & modals (z-50) */
+.kasra-map-wrapper .leaflet-container {
+  z-index: 1 !important;
+  font-family: inherit;
+}
+.kasra-map-wrapper .leaflet-pane {
+  z-index: 2 !important;
+}
+.kasra-map-wrapper .leaflet-top,
+.kasra-map-wrapper .leaflet-bottom {
+  z-index: 5 !important;
+}
+

@@ -9,9 +9,10 @@ import {
   BarChart2,
   Wallet,
   Package,
-  User,
+  Users,
+  Store,
+  Settings,
   Plus,
-  HelpCircle,
 } from 'lucide-react';
 
 interface TabItem {
@@ -71,15 +72,22 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           : undefined,
     },
     {
-      id: 'settings',
-      label: 'Profil & Pengaturan',
+      id: 'community',
+      label: 'Komunitas Usaha & UMKM',
+      shortLabel: 'Komunitas',
+      icon: Users,
+    },
+    {
+      id: 'profile',
+      label: 'Profil Publik & Etalase Toko',
       shortLabel: 'Profil',
-      icon: User,
+      icon: Store,
     },
   ];
 
-  const mobileLeftItems = [navItems[0], navItems[1]];
-  const mobileRightItems = [navItems[3], navItems[2]];
+  // Mobile Dock: Beranda, Kas | [+] | Gudang, Komunitas
+  const mobileLeftItems = [navItems[0], navItems[2]];
+  const mobileRightItems = [navItems[3], navItems[4]];
 
   return (
     <>
@@ -87,13 +95,13 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           1. DESKTOP LEFT ICON RAIL
          ====================================================================== */}
       <aside
-        className={`hidden md:flex flex-col w-[82px] border-r py-6 px-3 shrink-0 justify-between items-center select-none z-30 transition-colors ${
+        className={`hidden md:flex flex-col w-[84px] border-r py-5 px-3 shrink-0 justify-between items-center select-none z-30 transition-colors ${
           isDark
             ? 'bg-[#22396F] border-[#345294] shadow-[1px_0_20px_rgba(7,16,38,0.4)]'
             : 'bg-white border-slate-200/80 shadow-[1px_0_12px_rgba(0,0,0,0.02)]'
         }`}
       >
-        <div className="flex flex-col items-center gap-6 w-full">
+        <div className="flex flex-col items-center gap-5 w-full">
           {/* Brand Mark */}
           <div
             onClick={() => setActiveTab('dashboard')}
@@ -112,7 +120,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           </div>
 
           {/* Navigation Icon List */}
-          <nav className="flex flex-col items-center gap-2 w-full pt-1">
+          <nav className="flex flex-col items-center gap-1.5 w-full pt-0.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -122,7 +130,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   title={item.label}
-                  className={`relative w-14 py-2.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group cursor-pointer ${
+                  className={`relative w-14 py-2 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group cursor-pointer ${
                     isActive
                       ? isDark
                         ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
@@ -167,14 +175,42 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           </nav>
         </div>
 
-        {/* Bottom Rail Utilities */}
-        <div className="flex flex-col items-center gap-3 w-full">
+        {/* Bottom Dedicated Account & Store Settings Button */}
+        <div className="flex flex-col items-center gap-2 w-full">
           <button
             onClick={() => setActiveTab('settings')}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-            title="Pengaturan & Sesi Toko"
+            title="Pengaturan Akun & Toko"
+            className={`relative w-14 py-2 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group cursor-pointer ${
+              activeTab === 'settings'
+                ? isDark
+                  ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
+                  : 'bg-[#E4EFE0] text-[#1E3D1C]'
+                : isDark
+                ? 'text-[#B8C4E0] hover:text-[#FCF1D0] hover:bg-[#172A57]'
+                : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100/80'
+            }`}
           >
-            <HelpCircle className="w-4 h-4" />
+            <Settings className="w-5 h-5 stroke-[2.1]" />
+            <span className="text-[9px] font-bold tracking-tight whitespace-nowrap">
+              Setelan
+            </span>
+            {activeTab === 'settings' && (
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isDark ? 'bg-[#FCF1D0]' : 'bg-[#1E3D1C]'
+                }`}
+              />
+            )}
+
+            <div
+              className={`absolute left-[88px] px-3 py-1.5 rounded-xl text-xs font-medium border opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-50 ${
+                isDark
+                  ? 'bg-[#0D1C42] text-[#FCF1D0] border-[#345294]'
+                  : 'bg-slate-900 text-white border-slate-800'
+              }`}
+            >
+              Pengaturan Akun & Lokasi Toko
+            </div>
           </button>
         </div>
       </aside>
@@ -198,7 +234,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className="flex flex-col items-center justify-center gap-0.5 py-1 px-3 relative cursor-pointer"
+                className="flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 relative cursor-pointer"
               >
                 <Icon
                   className={`w-5 h-5 transition-colors ${
@@ -257,7 +293,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className="flex flex-col items-center justify-center gap-0.5 py-1 px-3 relative cursor-pointer"
+                className="flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 relative cursor-pointer"
               >
                 <Icon
                   className={`w-5 h-5 transition-colors ${

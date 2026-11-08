@@ -20,6 +20,7 @@ import {
 import { useAuth } from '@/lib/auth/AuthContext';
 import { validatePasswordStrength } from '@/lib/auth/crypto';
 import { KasraLogo } from '@/components/ui/KasraLogo';
+import { BUSINESS_CATEGORY_PRESETS } from '@/lib/constants/businessCategories';
 import confetti from 'canvas-confetti';
 
 interface AuthViewProps {
@@ -502,14 +503,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     onChange={(e) => setRegCategory(e.target.value)}
                     className={`${inputClassName} px-3 cursor-pointer`}
                   >
-                    <option value="">Pilih nanti di Pengaturan Toko</option>
-                    <option value="Kafe & Minuman">Kafe & Minuman</option>
-                    <option value="Kuliner & Rumah Makan">Kuliner & Resto</option>
-                    <option value="Toko Kelontong & Sembako">Ritel / Sembako</option>
-                    <option value="Roti & Kue">Roti & Kue</option>
-                    <option value="Busana & Pakaian">Busana & Pakaian</option>
-                    <option value="Jasa & Layanan">Jasa & Layanan</option>
-                    <option value="__custom__">Ketik kategori sendiri...</option>
+                    <option value="">Pilih bidang usaha toko...</option>
+                    {BUSINESS_CATEGORY_PRESETS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                    <option value="__custom__">Lainnya (Ketik bidang sendiri...)</option>
                   </select>
                 </div>
               </div>

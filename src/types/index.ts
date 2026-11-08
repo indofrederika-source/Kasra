@@ -41,6 +41,8 @@ export interface Product {
   hppMethod: HppMethod;
   hppBreakdown?: HppComponent[];
   sellingPrice: number;
+  isPublicShowcase?: boolean; // Tampilkan produk jadi ini di Etalase Profil Publik
+  publicDescription?: string; // Deskripsi singkat untuk pengunjung profil toko
   lastSoldAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -90,13 +92,91 @@ export interface StockMovement {
 
 export interface StoreProfile {
   storeName: string;
+  handle?: string;
+  bio?: string;
   businessCategory: string;
   logoUrl: string;
+  bannerUrl?: string;
+  operatingHours?: string;
+  province?: string;
+  city?: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   phone: string;
   monthlyTarget: number;
   ownerName: string;
   bankAccount: string;
+  showPublicCatalog?: boolean;
+  showWhatsappPublic?: boolean;
+  showMapPublic?: boolean;
+}
+
+export interface PublicProductItem {
+  id: string;
+  name: string;
+  category: string;
+  subcategory?: string;
+  imageUrl: string;
+  sellingPrice: number;
+  unit: string;
+  publicDescription?: string;
+}
+
+export interface PublicStoreProfile {
+  userId: string;
+  storeName: string;
+  handle: string;
+  ownerName?: string;
+  businessCategory: string;
+  bio: string;
+  logoUrl: string;
+  bannerUrl?: string;
+  operatingHours?: string;
+  province?: string;
+  city: string;
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  phone?: string;
+  showPublicCatalog: boolean;
+  showWhatsappPublic: boolean;
+  showMapPublic: boolean;
+  showcaseProducts: PublicProductItem[];
+  joinedAt?: string;
+  isSeedPartner?: boolean;
+}
+
+export type CommunityPostType = 'general' | 'new_product' | 'promo' | 'story' | 'collab';
+
+export interface CommunityComment {
+  id: string;
+  postId: string;
+  userId: string;
+  storeName: string;
+  storeHandle: string;
+  storeLogoUrl: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface CommunityPost {
+  id: string;
+  userId: string;
+  storeName: string;
+  storeHandle: string;
+  storeLogoUrl: string;
+  businessCategory: string;
+  city: string;
+  province?: string;
+  postType: CommunityPostType;
+  caption: string;
+  imageUrls: string[];
+  hashtags: string[];
+  taggedProducts: PublicProductItem[];
+  likedByUserIds: string[];
+  comments: CommunityComment[];
+  createdAt: string;
 }
 
 export interface CashChangeDraft {
@@ -148,7 +228,14 @@ export interface ConfirmationDraft {
   timestamp: string;
 }
 
-export type TabType = 'dashboard' | 'cash' | 'storage' | 'analytics' | 'settings';
+export type TabType =
+  | 'dashboard'
+  | 'cash'
+  | 'storage'
+  | 'analytics'
+  | 'community'
+  | 'profile'
+  | 'settings';
 
 export type NotificationCategory =
   | 'cash_income'

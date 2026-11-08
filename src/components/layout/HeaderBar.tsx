@@ -20,6 +20,9 @@ import {
   Sun,
   Moon,
   Plus,
+  Store,
+  Users,
+  BarChart2,
 } from 'lucide-react';
 
 interface HeaderBarProps {
@@ -67,8 +70,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const storeDisplayName = user?.storeName || profile.storeName || 'Toko Saya';
-  const userDisplayName = user?.name || profile.ownerName || 'Pemilik Toko';
+  const storeDisplayName = profile.storeName || user?.storeName || 'Toko Saya';
+  const userDisplayName = profile.ownerName || user?.name || 'Pemilik Toko';
   const userEmail = user?.email || '-';
 
   return (
@@ -80,7 +83,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       }`}
     >
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-        {/* Left: Notification Bell + Responsive Store Status Capsules (Never clipped mid-word) */}
+        {/* Left: Notification Bell + Responsive Store Status Capsules */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
           {/* Mobile Brand Mark */}
           <button
@@ -176,9 +179,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         {/* Right: Compact Icon-Only Theme Switcher + Responsive Quick Actions */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 ml-auto">
-          {/* ================================================================
-              COMPACT ICON-ONLY THEME TOGGLE (Moon | Sun — No Text)
-             ================================================================ */}
+          {/* COMPACT ICON-ONLY THEME TOGGLE */}
           <div
             className={`inline-flex items-center p-0.5 rounded-full border transition-colors shrink-0 ${
               isDark
@@ -287,13 +288,21 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               className="flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2.5 py-1 rounded-full bg-white border border-slate-200 hover:border-slate-300 text-xs text-slate-800 cursor-pointer transition-colors shadow-2xs active:scale-95"
             >
               <div
-                className={`w-6 h-6 rounded-full font-extrabold text-[11px] flex items-center justify-center shrink-0 ${
+                className={`w-6 h-6 rounded-full font-extrabold text-[11px] flex items-center justify-center shrink-0 overflow-hidden ${
                   isDark
                     ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
                     : 'bg-gradient-to-br from-[#234720] to-[#152E14] text-[#F8FAF6]'
                 }`}
               >
-                {storeDisplayName.charAt(0).toUpperCase()}
+                {profile.logoUrl ? (
+                  <img
+                    src={profile.logoUrl}
+                    alt={storeDisplayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  storeDisplayName.charAt(0).toUpperCase()
+                )}
               </div>
               <span className="font-bold max-w-[110px] truncate">{storeDisplayName}</span>
               <ChevronDown
@@ -303,22 +312,32 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               />
             </button>
 
-            {/* Profile Dropdown Menu */}
+            {/* Profile Dropdown Menu (Separated Public Profile vs Account Settings) */}
             {isProfileMenuOpen && (
               <div className="absolute right-0 mt-2 w-64 bg-white rounded-3xl border border-slate-200/90 shadow-2xl py-2 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
                 <div className="px-4 py-3 border-b border-slate-100">
                   <div className="flex items-center gap-2.5">
                     <div
-                      className={`w-9 h-9 rounded-full font-bold text-xs flex items-center justify-center ${
+                      className={`w-9 h-9 rounded-2xl font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 ${
                         isDark
                           ? 'bg-[#0D1C42] text-[#FCF1D0] border border-[#345294]'
                           : 'bg-gradient-to-br from-[#234720] to-[#152E14] text-[#F8FAF6]'
                       }`}
                     >
-                      {userDisplayName.charAt(0).toUpperCase()}
+                      {profile.logoUrl ? (
+                        <img
+                          src={profile.logoUrl}
+                          alt={storeDisplayName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        userDisplayName.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-slate-900 truncate">{userDisplayName}</p>
+                      <p className="text-xs font-bold text-slate-900 truncate">
+                        {storeDisplayName}
+                      </p>
                       <p className="text-[11px] text-slate-500 truncate">{userEmail}</p>
                     </div>
                   </div>
@@ -328,14 +347,52 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      setActiveTab('profile');
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors text-left cursor-pointer"
+                  >
+                    <Store className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Profil Publik & Etalase Toko</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('community');
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors text-left cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Komunitas Usaha</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('analytics');
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="md:hidden w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors text-left cursor-pointer"
+                  >
+                    <BarChart2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Statistik & Laporan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       setActiveTab('settings');
                       setIsProfileMenuOpen(false);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors text-left cursor-pointer"
                   >
                     <Settings className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Pengaturan Toko & Profil</span>
+                    <span>Pengaturan Akun & Lokasi</span>
                   </button>
+
+                  <div className="my-1 border-t border-slate-100" />
 
                   <button
                     type="button"

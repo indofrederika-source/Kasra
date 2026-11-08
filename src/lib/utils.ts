@@ -171,3 +171,88 @@ export function getStockStatus(currentStock: number, minStockAlert: number): Sto
     };
   }
 }
+
+/**
+ * Determine if a warehouse category represents raw materials / packaging / internal operational stock
+ * rather than customer-facing finished goods ("Produk Jadi").
+ */
+export function isRawMaterialCategory(category?: string, subcategory?: string): boolean {
+  const combined = `${category || ''} ${subcategory || ''}`.toLowerCase();
+  const rawKeywords = [
+    'bahan baku',
+    'bahan mentah',
+    'bahan dapur',
+    'bumbu mentah',
+    'kemasan',
+    'packaging',
+    'perlengkapan',
+    'operasional',
+    'alat dapur',
+    'atk',
+  ];
+  return rawKeywords.some((kw) => combined.includes(kw));
+}
+
+export function toStoreHandle(storeName: string, fallback = 'tokokasra'): string {
+  const cleaned = (storeName || '')
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 24);
+  return cleaned || fallback;
+}
+
+export function extractHashtags(text: string): string[] {
+  const matches = (text || '').match(/#[a-zA-Z0-9_]+/g) || [];
+  return Array.from(new Set(matches.map((t) => t.slice(1).toLowerCase())));
+}
+
+export function formatRelativeTimeIndo(isoOrReadable: string): string {
+  try {
+    const d = new Date(isoOrReadable);
+    if (isNaN(d.getTime())) return isoOrReadable;
+    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diffSec < 60) return 'Baru saja';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} mnt lalu`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} jam lalu`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 7) return `${diffDays} hari lalu`;
+    return formatDateIndo(isoOrReadable);
+  } catch {
+    return isoOrReadable;
+  }
+}
+
+export function formatWhatsAppUrl(phone: string, text?: string): string {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const normalized = digits.startsWith('0')
+    ? `62${digits.slice(1)}`
+    : digits.startsWith('62')
+    ? digits
+    : `62${digits}`;
+  const query = text ? `?text=${encodeURIComponent(text)}` : '';
+  return `https://wa.me/${normalized}${query}`;
+}
+
+export function calculateDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+

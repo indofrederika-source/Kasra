@@ -14,6 +14,11 @@ import {
   NotificationCategory,
   NotificationSeverity,
   NotificationPreferences,
+  PublicStoreProfile,
+  PublicProductItem,
+  CommunityPost,
+  CommunityPostType,
+  CommunityComment,
 } from '@/types';
 import {
   INITIAL_PROFILE,
@@ -23,7 +28,15 @@ import {
   INITIAL_TRANSACTIONS,
   INITIAL_STOCK_MOVEMENTS,
 } from '@/lib/mockData';
-import { formatBatchName, formatDateIndo, formatRupiah, getActiveProductExpiry } from '@/lib/utils';
+import {
+  formatBatchName,
+  formatDateIndo,
+  formatRupiah,
+  getActiveProductExpiry,
+  isRawMaterialCategory,
+  toStoreHandle,
+  extractHashtags,
+} from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import {
@@ -37,7 +50,13 @@ import {
   syncUpsertProfile,
   syncUpsertCategory,
   syncDeleteCategory,
+  fetchCloudCommunityData,
+  syncUpsertPublicStoreProfile,
+  syncUpsertCommunityPost,
+  syncDeleteCommunityPost,
+  syncFollowAction,
 } from '@/lib/supabase/syncService';
+import { SEED_COMMUNITY_POSTS, SEED_COMMUNITY_PROFILES } from '@/lib/community/seedCommunityData';
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   inAppEnabled: true,
@@ -147,7 +166,47 @@ interface KasraContextType {
   markAllNotificationsRead: () => void;
   deleteNotification: (id: string) => void;
   clearAllNotifications: () => void;
+  // Community & Public Storefront
+  myPublicStoreProfile: PublicStoreProfile;
+  finishedGoodsProducts: Product[];
+  communityPosts: CommunityPost[];
+  communityProfiles: PublicStoreProfile[];
+  followedStoreIds: string[];
+  bookmarkedPostIds: string[];
+  selectedStoreProfileId: string | null;
+  setSelectedStoreProfileId: (storeUserId: string | null) => void;
+  getFollowerCount: (storeUserId: string) => number;
+  getFollowingCount: (storeUserId: string) => number;
+  getFollowersList: (storeUserId: string) => PublicStoreProfile[];
+  getFollowingList: (storeUserId: string) => PublicStoreProfile[];
+  createCommunityPost: (input: {
+    caption: string;
+    postType: CommunityPostType;
+    imageUrls: string[];
+    taggedProductIds: string[];
+  }) => CommunityPost;
+  deleteCommunityPost: (postId: string) => void;
+  toggleLikePost: (postId: string) => void;
+  addPostComment: (postId: string, content: string) => void;
+  deletePostComment: (postId: string, commentId: string) => void;
+  toggleFollowStore: (targetStoreUserId: string) => void;
+  toggleBookmarkPost: (postId: string) => void;
+  refreshCommunityFeed: () => Promise<void>;
 }
+
+const COMMUNITY_SHARED_KEYS = {
+  POSTS: 'kasra_community_v1_posts',
+  PROFILES: 'kasra_community_v1_profiles',
+  FOLLOWS: 'kasra_community_v1_follows',
+};
+
+const DEFAULT_SEED_FOLLOW_EDGES: Array<{ followerId: string; followingId: string }> = [
+  { followerId: 'seed-store-roti-menteng', followingId: 'seed-store-braga-roastery' },
+  { followerId: 'seed-store-keramik-malang', followingId: 'seed-store-braga-roastery' },
+  { followerId: 'seed-store-braga-roastery', followingId: 'seed-store-roti-menteng' },
+  { followerId: 'seed-store-tenun-jogja', followingId: 'seed-store-roti-menteng' },
+  { followerId: 'seed-store-sambal-sby', followingId: 'seed-store-braga-roastery' },
+];
 
 const KasraContext = createContext<KasraContextType | undefined>(undefined);
 
@@ -165,6 +224,7 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       NOTIFICATIONS: `kasra_v3_${uid}_notifications`,
       NOTIF_PREFS: `kasra_v3_${uid}_notif_prefs`,
       NOTIF_KEYS: `kasra_v3_${uid}_notif_keys`,
+      BOOKMARKS: `kasra_v3_${uid}_bookmarks`,
     }),
     [uid]
   );
@@ -193,6 +253,17 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<
     'default' | 'granted' | 'denied' | 'unsupported'
   >('default');
+
+  // Community & Public Storefront State
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(SEED_COMMUNITY_POSTS);
+  const [externalProfiles, setExternalProfiles] = useState<PublicStoreProfile[]>(
+    SEED_COMMUNITY_PROFILES
+  );
+  const [followEdges, setFollowEdges] = useState<Array<{ followerId: string; followingId: string }>>(
+    DEFAULT_SEED_FOLLOW_EDGES
+  );
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<string[]>([]);
+  const [selectedStoreProfileId, setSelectedStoreProfileId] = useState<string | null>(null);
 
   const prefsRef = useRef<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const notifiedKeysRef = useRef<Set<string>>(new Set());
@@ -1769,6 +1840,427 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     pushNotification,
   ]);
 
+  // =========================================================================
+  // COMMUNITY & PUBLIC STOREFRONT COMPUTATIONS AND SYNC
+  // =========================================================================
+  const finishedGoodsProducts = useMemo(() => {
+    return products.filter((p) => !isRawMaterialCategory(p.category, p.subcategory));
+  }, [products]);
+
+  const myPublicStoreProfile: PublicStoreProfile = useMemo(() => {
+    const rawName = profile.storeName || user?.storeName || 'Toko Saya';
+    const cleanHandle = profile.handle?.trim()
+      ? toStoreHandle(profile.handle.trim())
+      : toStoreHandle(rawName);
+    const showcaseItems: PublicProductItem[] = finishedGoodsProducts
+      .filter((p) => Boolean(p.isPublicShowcase))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        imageUrl: p.imageUrl || '',
+        sellingPrice: p.sellingPrice,
+        unit: p.unit || 'pcs',
+        publicDescription: p.publicDescription || undefined,
+      }));
+
+    return {
+      userId: uid,
+      storeName: rawName,
+      handle: cleanHandle,
+      ownerName: profile.ownerName || user?.name || '',
+      businessCategory: profile.businessCategory || user?.businessCategory || '',
+      bio: profile.bio || '',
+      logoUrl: profile.logoUrl || user?.avatarUrl || '',
+      bannerUrl: profile.bannerUrl || '',
+      operatingHours: profile.operatingHours || '',
+      province: profile.province || '',
+      city: profile.city || '',
+      address: profile.address || '',
+      latitude: profile.latitude ?? null,
+      longitude: profile.longitude ?? null,
+      phone: profile.phone || '',
+      showPublicCatalog: profile.showPublicCatalog ?? true,
+      showWhatsappPublic: profile.showWhatsappPublic ?? true,
+      showMapPublic: profile.showMapPublic ?? true,
+      showcaseProducts: showcaseItems,
+      joinedAt: user?.createdAt,
+    };
+  }, [profile, user, uid, finishedGoodsProducts]);
+
+  const refreshCommunityFeed = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const cloud = await fetchCloudCommunityData();
+    if (!cloud) return;
+
+    if (cloud.publicProfiles.length > 0) {
+      setExternalProfiles((prev) => {
+        const map = new Map<string, PublicStoreProfile>();
+        SEED_COMMUNITY_PROFILES.forEach((p) => map.set(p.userId, p));
+        prev.forEach((p) => map.set(p.userId, p));
+        cloud.publicProfiles.forEach((p) => map.set(p.userId, p));
+        return Array.from(map.values());
+      });
+    }
+
+    if (cloud.posts.length > 0) {
+      setCommunityPosts((prev) => {
+        const map = new Map<string, CommunityPost>();
+        SEED_COMMUNITY_POSTS.forEach((p) => map.set(p.id, p));
+        prev.forEach((p) => map.set(p.id, p));
+        cloud.posts.forEach((p) => map.set(p.id, p));
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    }
+
+    if (cloud.follows.length > 0) {
+      setFollowEdges((prev) => {
+        const keySet = new Set<string>();
+        const merged: Array<{ followerId: string; followingId: string }> = [];
+        [...DEFAULT_SEED_FOLLOW_EDGES, ...prev, ...cloud.follows].forEach((edge) => {
+          const k = `${edge.followerId}->${edge.followingId}`;
+          if (!keySet.has(k)) {
+            keySet.add(k);
+            merged.push(edge);
+          }
+        });
+        return merged;
+      });
+    }
+  }, []);
+
+  // Hydrate shared local community state + bookmarks + cloud community
+  useEffect(() => {
+    try {
+      const rawPosts = localStorage.getItem(COMMUNITY_SHARED_KEYS.POSTS);
+      if (rawPosts) {
+        const parsedPosts: CommunityPost[] = JSON.parse(rawPosts);
+        const map = new Map<string, CommunityPost>();
+        SEED_COMMUNITY_POSTS.forEach((p) => map.set(p.id, p));
+        parsedPosts.forEach((p) => map.set(p.id, p));
+        setCommunityPosts(
+          Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        );
+      }
+
+      const rawProfiles = localStorage.getItem(COMMUNITY_SHARED_KEYS.PROFILES);
+      if (rawProfiles) {
+        const parsedProfiles: PublicStoreProfile[] = JSON.parse(rawProfiles);
+        const map = new Map<string, PublicStoreProfile>();
+        SEED_COMMUNITY_PROFILES.forEach((p) => map.set(p.userId, p));
+        parsedProfiles.forEach((p) => map.set(p.userId, p));
+        setExternalProfiles(Array.from(map.values()));
+      }
+
+      const rawFollows = localStorage.getItem(COMMUNITY_SHARED_KEYS.FOLLOWS);
+      if (rawFollows) {
+        setFollowEdges(JSON.parse(rawFollows));
+      }
+
+      const rawBookmarks = localStorage.getItem(storageKeys.BOOKMARKS);
+      setBookmarkedPostIds(rawBookmarks ? JSON.parse(rawBookmarks) : []);
+    } catch {
+      // ignore
+    }
+
+    refreshCommunityFeed();
+  }, [storageKeys.BOOKMARKS, refreshCommunityFeed]);
+
+  // Keep user's own public profile synced locally & in cloud whenever store/showcase updates
+  useEffect(() => {
+    if (!isHydrated || !uid || uid === 'guest') return;
+
+    setExternalProfiles((prev) => {
+      const map = new Map<string, PublicStoreProfile>();
+      prev.forEach((p) => map.set(p.userId, p));
+      map.set(uid, myPublicStoreProfile);
+      const nextList = Array.from(map.values());
+      try {
+        localStorage.setItem(COMMUNITY_SHARED_KEYS.PROFILES, JSON.stringify(nextList));
+      } catch {
+        // ignore
+      }
+      return nextList;
+    });
+
+    // Also keep user's own posts metadata fresh
+    setCommunityPosts((prev) => {
+      let changed = false;
+      const next = prev.map((post) => {
+        if (post.userId !== uid) return post;
+        if (
+          post.storeName !== myPublicStoreProfile.storeName ||
+          post.storeHandle !== myPublicStoreProfile.handle ||
+          post.storeLogoUrl !== myPublicStoreProfile.logoUrl ||
+          post.businessCategory !== myPublicStoreProfile.businessCategory ||
+          post.city !== myPublicStoreProfile.city ||
+          post.province !== myPublicStoreProfile.province
+        ) {
+          changed = true;
+          return {
+            ...post,
+            storeName: myPublicStoreProfile.storeName,
+            storeHandle: myPublicStoreProfile.handle,
+            storeLogoUrl: myPublicStoreProfile.logoUrl,
+            businessCategory: myPublicStoreProfile.businessCategory,
+            city: myPublicStoreProfile.city,
+            province: myPublicStoreProfile.province,
+          };
+        }
+        return post;
+      });
+      if (changed) {
+        try {
+          localStorage.setItem(COMMUNITY_SHARED_KEYS.POSTS, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    syncUpsertPublicStoreProfile(myPublicStoreProfile);
+  }, [isHydrated, uid, myPublicStoreProfile]);
+
+  const communityProfiles = useMemo(() => {
+    const map = new Map<string, PublicStoreProfile>();
+    SEED_COMMUNITY_PROFILES.forEach((p) => map.set(p.userId, p));
+    externalProfiles.forEach((p) => map.set(p.userId, p));
+    if (uid && uid !== 'guest') {
+      map.set(uid, myPublicStoreProfile);
+    }
+    return Array.from(map.values());
+  }, [externalProfiles, uid, myPublicStoreProfile]);
+
+  const followedStoreIds = useMemo(() => {
+    return followEdges.filter((e) => e.followerId === uid).map((e) => e.followingId);
+  }, [followEdges, uid]);
+
+  const getFollowerCount = useCallback(
+    (storeUserId: string) => {
+      return followEdges.filter((e) => e.followingId === storeUserId).length;
+    },
+    [followEdges]
+  );
+
+  const getFollowingCount = useCallback(
+    (storeUserId: string) => {
+      return followEdges.filter((e) => e.followerId === storeUserId).length;
+    },
+    [followEdges]
+  );
+
+  const getFollowersList = useCallback(
+    (storeUserId: string) => {
+      const ids = new Set(
+        followEdges.filter((e) => e.followingId === storeUserId).map((e) => e.followerId)
+      );
+      return communityProfiles.filter((p) => ids.has(p.userId));
+    },
+    [followEdges, communityProfiles]
+  );
+
+  const getFollowingList = useCallback(
+    (storeUserId: string) => {
+      const ids = new Set(
+        followEdges.filter((e) => e.followerId === storeUserId).map((e) => e.followingId)
+      );
+      return communityProfiles.filter((p) => ids.has(p.userId));
+    },
+    [followEdges, communityProfiles]
+  );
+
+  const persistPosts = (nextPosts: CommunityPost[]) => {
+    try {
+      localStorage.setItem(COMMUNITY_SHARED_KEYS.POSTS, JSON.stringify(nextPosts));
+    } catch {
+      // ignore
+    }
+  };
+
+  const createCommunityPost = ({
+    caption,
+    postType,
+    imageUrls,
+    taggedProductIds,
+  }: {
+    caption: string;
+    postType: CommunityPostType;
+    imageUrls: string[];
+    taggedProductIds: string[];
+  }): CommunityPost => {
+    const taggedProducts: PublicProductItem[] = finishedGoodsProducts
+      .filter((p) => taggedProductIds.includes(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        imageUrl: p.imageUrl || '',
+        sellingPrice: p.sellingPrice,
+        unit: p.unit || 'pcs',
+        publicDescription: p.publicDescription || undefined,
+      }));
+
+    const newPost: CommunityPost = {
+      id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      userId: uid,
+      storeName: myPublicStoreProfile.storeName,
+      storeHandle: myPublicStoreProfile.handle,
+      storeLogoUrl: myPublicStoreProfile.logoUrl,
+      businessCategory: myPublicStoreProfile.businessCategory,
+      city: myPublicStoreProfile.city,
+      province: myPublicStoreProfile.province,
+      postType,
+      caption: caption.trim(),
+      imageUrls,
+      hashtags: extractHashtags(caption),
+      taggedProducts,
+      likedByUserIds: [],
+      comments: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    setCommunityPosts((prev) => {
+      const next = [newPost, ...prev];
+      persistPosts(next);
+      return next;
+    });
+
+    if (uid && uid !== 'guest') {
+      syncUpsertCommunityPost(newPost);
+    }
+
+    return newPost;
+  };
+
+  const deleteCommunityPost = (postId: string) => {
+    setCommunityPosts((prev) => {
+      const next = prev.filter((p) => p.id !== postId);
+      persistPosts(next);
+      return next;
+    });
+    if (uid && uid !== 'guest') {
+      syncDeleteCommunityPost(uid, postId);
+    }
+  };
+
+  const toggleLikePost = (postId: string) => {
+    let updatedTarget: CommunityPost | null = null;
+    setCommunityPosts((prev) => {
+      const next = prev.map((p) => {
+        if (p.id !== postId) return p;
+        const alreadyLiked = p.likedByUserIds.includes(uid);
+        const likedByUserIds = alreadyLiked
+          ? p.likedByUserIds.filter((id) => id !== uid)
+          : [...p.likedByUserIds, uid];
+        const updated = { ...p, likedByUserIds };
+        updatedTarget = updated;
+        return updated;
+      });
+      persistPosts(next);
+      return next;
+    });
+
+    if (updatedTarget && uid && uid !== 'guest') {
+      syncUpsertCommunityPost(updatedTarget);
+    }
+  };
+
+  const addPostComment = (postId: string, content: string) => {
+    const clean = content.trim();
+    if (!clean) return;
+
+    const newComment: CommunityComment = {
+      id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      postId,
+      userId: uid,
+      storeName: myPublicStoreProfile.storeName,
+      storeHandle: myPublicStoreProfile.handle,
+      storeLogoUrl: myPublicStoreProfile.logoUrl,
+      content: clean,
+      createdAt: new Date().toISOString(),
+    };
+
+    let updatedTarget: CommunityPost | null = null;
+    setCommunityPosts((prev) => {
+      const next = prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = { ...p, comments: [...p.comments, newComment] };
+        updatedTarget = updated;
+        return updated;
+      });
+      persistPosts(next);
+      return next;
+    });
+
+    if (updatedTarget && uid && uid !== 'guest') {
+      syncUpsertCommunityPost(updatedTarget);
+    }
+  };
+
+  const deletePostComment = (postId: string, commentId: string) => {
+    let updatedTarget: CommunityPost | null = null;
+    setCommunityPosts((prev) => {
+      const next = prev.map((p) => {
+        if (p.id !== postId) return p;
+        const updated = {
+          ...p,
+          comments: p.comments.filter((c) => c.id !== commentId),
+        };
+        updatedTarget = updated;
+        return updated;
+      });
+      persistPosts(next);
+      return next;
+    });
+
+    if (updatedTarget && uid && uid !== 'guest') {
+      syncUpsertCommunityPost(updatedTarget);
+    }
+  };
+
+  const toggleFollowStore = (targetStoreUserId: string) => {
+    if (!targetStoreUserId || targetStoreUserId === uid) return;
+
+    setFollowEdges((prev) => {
+      const exists = prev.some(
+        (e) => e.followerId === uid && e.followingId === targetStoreUserId
+      );
+      const next = exists
+        ? prev.filter((e) => !(e.followerId === uid && e.followingId === targetStoreUserId))
+        : [...prev, { followerId: uid, followingId: targetStoreUserId }];
+      try {
+        localStorage.setItem(COMMUNITY_SHARED_KEYS.FOLLOWS, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      if (uid && uid !== 'guest') {
+        syncFollowAction(uid, targetStoreUserId, !exists);
+      }
+      return next;
+    });
+  };
+
+  const toggleBookmarkPost = (postId: string) => {
+    setBookmarkedPostIds((prev) => {
+      const next = prev.includes(postId)
+        ? prev.filter((id) => id !== postId)
+        : [...prev, postId];
+      try {
+        localStorage.setItem(storageKeys.BOOKMARKS, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
   return (
     <KasraContext.Provider
       value={{
@@ -1824,6 +2316,26 @@ export const KasraProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         markAllNotificationsRead,
         deleteNotification,
         clearAllNotifications,
+        myPublicStoreProfile,
+        finishedGoodsProducts,
+        communityPosts,
+        communityProfiles,
+        followedStoreIds,
+        bookmarkedPostIds,
+        selectedStoreProfileId,
+        setSelectedStoreProfileId,
+        getFollowerCount,
+        getFollowingCount,
+        getFollowersList,
+        getFollowingList,
+        createCommunityPost,
+        deleteCommunityPost,
+        toggleLikePost,
+        addPostComment,
+        deletePostComment,
+        toggleFollowStore,
+        toggleBookmarkPost,
+        refreshCommunityFeed,
       }}
     >
       {children}
