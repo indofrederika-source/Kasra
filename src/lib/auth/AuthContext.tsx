@@ -83,18 +83,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       try {
         if (isSupabaseConfigured) {
-          // Clear legacy pre-Supabase local user cache & stale lockouts so cloud login is never blocked locally
+          // Clear stale lockouts so login is never blocked locally
           if (typeof window !== 'undefined') {
             try {
-              localStorage.removeItem(STORAGE_KEYS.USERS_DB);
-              localStorage.removeItem(STORAGE_KEYS.SESSION);
-              sessionStorage.removeItem(STORAGE_KEYS.SESSION);
               const rawAttempts = localStorage.getItem(STORAGE_KEYS.LOGIN_ATTEMPTS);
               if (rawAttempts) {
                 const parsedAttempts = JSON.parse(rawAttempts);
                 delete parsedAttempts['indo.frederika@gmail.com'];
                 delete parsedAttempts['indofrederika@gmail.com'];
                 localStorage.setItem(STORAGE_KEYS.LOGIN_ATTEMPTS, JSON.stringify(parsedAttempts));
+              }
+
+              // Ensure verified default account is seeded locally
+              const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
+              const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
+              const hasIndo = users.some((u) => u.email.toLowerCase() === 'indo.frederika@gmail.com');
+              if (!hasIndo) {
+                users.push(
+                  {
+                    id: 'usr_indofrederika_1',
+                    name: 'indo frederika suherdin',
+                    email: 'indo.frederika@gmail.com',
+                    storeName: 'Warmindofs',
+                    businessCategory: 'Kuliner & Rumah Makan',
+                    passwordHash: '51b5fb3dcd05f39a20619577dbedaccadfe0f3bbfc9cac6763db466bc5e5de41',
+                    passwordSalt: 'e5e762d3f6a03bad205c961f29d8ca91',
+                    createdAt: '2026-11-08T09:00:00.000Z',
+                    lastLoginAt: '2026-11-08T09:00:00.000Z',
+                  },
+                  {
+                    id: 'usr_indofrederika_2',
+                    name: 'indo frederika suherdin',
+                    email: 'indofrederika@gmail.com',
+                    storeName: 'Warmindofs',
+                    businessCategory: 'Kuliner & Rumah Makan',
+                    passwordHash: '51b5fb3dcd05f39a20619577dbedaccadfe0f3bbfc9cac6763db466bc5e5de41',
+                    passwordSalt: 'e5e762d3f6a03bad205c961f29d8ca91',
+                    createdAt: '2026-11-08T09:00:00.000Z',
+                    lastLoginAt: '2026-11-08T09:00:00.000Z',
+                  }
+                );
+                localStorage.setItem(STORAGE_KEYS.USERS_DB, JSON.stringify(users));
               }
             } catch {
               // ignore storage errors

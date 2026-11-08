@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "id": "usr_indofrederika_1",
+    "name": "indo frederika suherdin",
+    "email": "indo.frederika@gmail.com",
+    "storeName": "Warmindofs",
+    "businessCategory": "Kuliner & Rumah Makan",
+    "passwordHash": "51b5fb3dcd05f39a20619577dbedaccadfe0f3bbfc9cac6763db466bc5e5de41",
+    "passwordSalt": "e5e762d3f6a03bad205c961f29d8ca91",
+    "createdAt": "2026-11-08T09:00:00.000Z",
+    "lastLoginAt": "2026-11-08T09:00:00.000Z"
+  },
+  {
+    "id": "usr_indofrederika_2",
+    "name": "indo frederika suherdin",
+    "email": "indofrederika@gmail.com",
+    "storeName": "Warmindofs",
+    "businessCategory": "Kuliner & Rumah Makan",
+    "passwordHash": "51b5fb3dcd05f39a20619577dbedaccadfe0f3bbfc9cac6763db466bc5e5de41",
+    "passwordSalt": "e5e762d3f6a03bad205c961f29d8ca91",
+    "createdAt": "2026-11-08T09:00:00.000Z",
+    "lastLoginAt": "2026-11-08T09:00:00.000Z"
+  }
+]
