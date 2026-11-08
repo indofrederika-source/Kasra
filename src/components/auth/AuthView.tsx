@@ -15,8 +15,6 @@ import {
   KeyRound,
   Moon,
   Sun,
-  ShieldCheck,
-  RefreshCw,
   Send,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -39,12 +37,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const {
     login,
     register,
-    verifyEmailOtp,
-    resendVerificationEmail,
     sendPasswordResetEmail,
   } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'verify'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'register'>(
+    initialMode === 'register' ? 'register' : 'login'
+  );
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -62,12 +60,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [suggestedEmail, setSuggestedEmail] = useState<string | null>(null);
-
-  // Email verification state
-  const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [isResending, setIsResending] = useState(false);
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -96,15 +88,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   }, []);
 
-  // Countdown timer for Resend Verification button
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
-
   const handleToggleTheme = (nextDark: boolean) => {
     setIsDark(nextDark);
     try {
@@ -132,23 +115,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
       });
 
       if (!res.success) {
-        if (res.requiresEmailVerification && res.email) {
-          setPendingVerifyEmail(res.email);
-          setMode('verify');
-          setErrorMessage(null);
-          setInfoMessage(
-            `Akun "${res.email}" sudah terdaftar dan aman! Anda hanya perlu mengonfirmasi email sebelum masuk pertama kali. Cek Kotak Masuk atau folder Spam email Anda, atau klik "Kirim Ulang Email Verifikasi" di bawah.`
-          );
-        } else {
-          setErrorMessage(
-            res.error || 'Gagal masuk. Periksa kembali email dan kata sandi Anda.'
-          );
-        }
+        setErrorMessage(
+          res.error || 'Gagal masuk. Periksa kembali email dan kata sandi Anda.'
+        );
       } else {
         onSuccess?.();
       }
     } catch {
-      setErrorMessage('Terjadi gangguan koneksi sistem autentikasi.');
+      setErrorMessage('Terjadi gangguan koneksi saat masuk.');
     } finally {
       setIsSubmitting(false);
     }
@@ -192,19 +166,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
         if (res.alreadyRegistered && res.email) {
           setAlreadyRegisteredEmail(res.email);
         }
-        setErrorMessage(res.error || 'Gagal membuat akun.');
-        return;
-      }
-
-      if (res.requiresEmailVerification && res.email) {
-        setPendingVerifyEmail(res.email);
-        setLoginEmail(res.email);
-        setLoginPassword(regPassword);
-        setResendCooldown(45);
-        setMode('verify');
-        setInfoMessage(
-          `Kami telah mengirim email verifikasi ke ${res.email}. Klik tautan di dalam email tersebut (cek juga folder Spam/Promosi) untuk mengaktifkan akun toko Anda!`
-        );
+        setErrorMessage(res.error || 'Gagal membuat akun toko.');
         return;
       }
 
@@ -222,58 +184,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setErrorMessage('Terjadi kesalahan saat memproses pendaftaran.');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode.trim()) return;
-    setErrorMessage(null);
-    setInfoMessage(null);
-    setIsSubmitting(true);
-
-    try {
-      const res = await verifyEmailOtp(pendingVerifyEmail, otpCode);
-      if (!res.success) {
-        setErrorMessage(res.error || 'Kode verifikasi tidak valid.');
-      } else {
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-          });
-        } catch {
-          // ignore
-        }
-        onSuccess?.();
-      }
-    } catch {
-      setErrorMessage('Gagal memverifikasi kode. Silakan coba lagi.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleResendVerification = async () => {
-    if (!pendingVerifyEmail || resendCooldown > 0 || isResending) return;
-    setErrorMessage(null);
-    setInfoMessage(null);
-    setIsResending(true);
-
-    try {
-      const res = await resendVerificationEmail(pendingVerifyEmail);
-      if (!res.success) {
-        setErrorMessage(res.error || 'Gagal mengirim ulang email verifikasi.');
-      } else {
-        setResendCooldown(60);
-        setInfoMessage(
-          res.message ||
-            `Email verifikasi baru telah dikirim ke ${pendingVerifyEmail}. Cek Kotak Masuk & Spam.`
-        );
-      }
-    } finally {
-      setIsResending(false);
     }
   };
 
@@ -428,58 +338,56 @@ export const AuthView: React.FC<AuthViewProps> = ({
           }`}
         >
           {/* Segmented Tab Switcher (Login vs Register) */}
-          {mode !== 'verify' && (
-            <div
-              className={`grid grid-cols-2 p-1 rounded-2xl mb-6 border ${
-                isDark
-                  ? 'bg-[#172A57] border-[#345294]'
-                  : 'bg-[#E5EAE0] border-[#D8E0D2]'
+          <div
+            className={`grid grid-cols-2 p-1 rounded-2xl mb-6 border ${
+              isDark
+                ? 'bg-[#172A57] border-[#345294]'
+                : 'bg-[#E5EAE0] border-[#D8E0D2]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setErrorMessage(null);
+                setInfoMessage(null);
+                setSuggestedEmail(null);
+                setAlreadyRegisteredEmail(null);
+              }}
+              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                mode === 'login'
+                  ? isDark
+                    ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                    : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
+                  : isDark
+                  ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
+                  : 'text-[#627060] hover:text-[#142413]'
               }`}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setErrorMessage(null);
-                  setInfoMessage(null);
-                  setSuggestedEmail(null);
-                  setAlreadyRegisteredEmail(null);
-                }}
-                className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  mode === 'login'
-                    ? isDark
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                      : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
-                    : isDark
-                    ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
-                    : 'text-[#627060] hover:text-[#142413]'
-                }`}
-              >
-                Masuk Akun
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  setErrorMessage(null);
-                  setInfoMessage(null);
-                  setSuggestedEmail(null);
-                  setAlreadyRegisteredEmail(null);
-                }}
-                className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  mode === 'register'
-                    ? isDark
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
-                      : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
-                    : isDark
-                    ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
-                    : 'text-[#627060] hover:text-[#142413]'
-                }`}
-              >
-                Daftar Toko Baru
-              </button>
-            </div>
-          )}
+              Masuk Akun
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('register');
+                setErrorMessage(null);
+                setInfoMessage(null);
+                setSuggestedEmail(null);
+                setAlreadyRegisteredEmail(null);
+              }}
+              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                mode === 'register'
+                  ? isDark
+                    ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-sm'
+                    : 'bg-[#FFFFFF] text-[#142413] shadow-xs'
+                  : isDark
+                  ? 'text-[#B8C4E0] hover:text-[#FCF1D0]'
+                  : 'text-[#627060] hover:text-[#142413]'
+              }`}
+            >
+              Daftar Toko Baru
+            </button>
+          </div>
 
           {/* Error Alert Banner */}
           {errorMessage && (
@@ -504,7 +412,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               )}
 
               {alreadyRegisteredEmail && (
-                <div className="ml-6 flex flex-wrap items-center gap-2 pt-0.5">
+                <div className="ml-6 pt-0.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -516,18 +424,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-rose-300 text-rose-900 font-bold text-[11px] hover:bg-rose-100 transition-colors cursor-pointer"
                   >
                     <span>Masuk dengan {alreadyRegisteredEmail}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingVerifyEmail(alreadyRegisteredEmail);
-                      setMode('verify');
-                      setErrorMessage(null);
-                      setAlreadyRegisteredEmail(null);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-rose-300 text-rose-900 font-bold text-[11px] hover:bg-rose-100 transition-colors cursor-pointer"
-                  >
-                    <span>Verifikasi Email Ini</span>
                   </button>
                 </div>
               )}
@@ -542,111 +438,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* MODE 1: EMAIL VERIFICATION SCREEN (Real Email Ownership) */}
-          {/* ======================================================== */}
-          {mode === 'verify' ? (
-            <div className="space-y-4">
-              <div className="text-center space-y-1.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto mb-2">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <h2 className="text-base font-extrabold text-slate-900">
-                  Verifikasi Email Aktif Anda
-                </h2>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Untuk memastikan akun benar-benar milik Anda dan tersimpan permanen di cloud, aktifkan email:
-                </p>
-                <div className="inline-block px-3.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold font-mono text-slate-900">
-                  {pendingVerifyEmail}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs text-slate-700">
-                <div className="font-bold text-slate-900">Langkah Aktivasi Cepat:</div>
-                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 leading-relaxed">
-                  <li>
-                    Buka aplikasi email Anda (Gmail/Yahoo/Outlook), cek <strong>Kotak Masuk</strong> maupun folder <strong>Spam / Promosi</strong>.
-                  </li>
-                  <li>
-                    Klik tombol/tautan <strong>Confirm your mail</strong> di dalam email tersebut — Anda akan langsung otomatis masuk ke KASRA.
-                  </li>
-                  <li>
-                    Atau jika email berisi kode angka OTP, masukkan kodenya di bawah ini:
-                  </li>
-                </ol>
-              </div>
-
-              {/* Optional OTP Input Form */}
-              <form onSubmit={handleVerifyOtpSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Kode OTP Verifikasi Email (Opsional jika tidak klik tautan)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
-                    placeholder="Masukkan 6 atau 8 digit kode dari email"
-                    className={`${inputClassName} px-3.5 text-center font-mono text-sm tracking-widest font-bold`}
-                  />
-                </div>
-
-                {otpCode.length >= 6 && (
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${primaryBtnClass}`}
-                  >
-                    {isSubmitting ? (
-                      <div className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Verifikasi Kode & Masuk</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </>
-                    )}
-                  </button>
-                )}
-              </form>
-
-              {/* Resend Email & Back to Login Buttons */}
-              <div className="space-y-2 pt-2 border-t border-slate-200/70">
-                <button
-                  type="button"
-                  onClick={handleResendVerification}
-                  disabled={resendCooldown > 0 || isResending}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-55 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                  <span>
-                    {resendCooldown > 0
-                      ? `Kirim Ulang Email (${resendCooldown} dtk)`
-                      : 'Kirim Ulang Email Verifikasi'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginEmail(pendingVerifyEmail);
-                    setMode('login');
-                    setErrorMessage(null);
-                    setInfoMessage(
-                      'Jika Anda sudah mengeklik tautan konfirmasi di email, silakan klik tombol Masuk ke Kasra di bawah.'
-                    );
-                  }}
-                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${primaryBtnClass}`}
-                >
-                  <span>Sudah Klik Link di Email? Masuk Sekarang</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : mode === 'login' ? (
+          {mode === 'login' ? (
             /* ======================================================== */
-            /* MODE 2: LOGIN FORM */
+            /* MODE 1: LOGIN FORM */
             /* ======================================================== */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               {/* Email Input */}
@@ -832,7 +626,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               {/* Email */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Aktif (Wajib Email Asli untuk Verifikasi)
+                  Email Pemilik / Toko
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -849,7 +643,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   />
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
-                  Sistem memeriksa server email secara otomatis & mengirim link verifikasi ke kotak masuk Anda.
+                  Digunakan untuk masuk ke akun toko Anda.
                 </p>
               </div>
 
@@ -958,7 +752,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   <div className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
                 ) : (
                   <>
-                    <span>Daftar & Kirim Verifikasi Email</span>
+                    <span>Daftar & Masuk ke Kasra</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}

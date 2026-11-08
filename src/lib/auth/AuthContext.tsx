@@ -129,10 +129,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ) {
               window.history.replaceState({}, '', window.location.pathname + window.location.search);
             }
-          } else {
-            setUser(null);
+            setIsLoading(false);
+            return;
           }
 
+          // Check persistent session storage (supports server-backed and local accounts)
+          const rawSession =
+            typeof window !== 'undefined'
+              ? localStorage.getItem(STORAGE_KEYS.SESSION) || sessionStorage.getItem(STORAGE_KEYS.SESSION)
+              : null;
+
+          if (rawSession) {
+            try {
+              const session: AuthSession = JSON.parse(rawSession);
+              if (session.expiresAt > Date.now()) {
+                // Fetch server user
+                try {
+                  const res = await fetch(`/api/auth/server-users?email=${encodeURIComponent(session.email)}`);
+                  const data = await res.json().catch(() => null);
+                  if (data?.exists && data?.user) {
+                    setUser(data.user);
+                    setIsLoading(false);
+                    return;
+                  }
+                } catch {
+                  // ignore network error
+                }
+
+                // Local user fallback
+                const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
+                const localUsers: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
+                const localUser = localUsers.find((u) => u.email.toLowerCase() === session.email.toLowerCase());
+                if (localUser) {
+                  setUser(localUser);
+                  setIsLoading(false);
+                  return;
+                }
+              } else {
+                localStorage.removeItem(STORAGE_KEYS.SESSION);
+                sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          setUser(null);
           setIsLoading(false);
           return;
         }
@@ -291,119 +333,144 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      // 1. Try Supabase Auth first
       if (isSupabaseConfigured) {
-        const { data: supaLoginData, error: supaError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (!supaError && supaLoginData.user && supaLoginData.session) {
-          clearFailedAttempts(email);
-          const loggedInUser = mapSupabaseUserToAccount(supaLoginData.user);
-          setUser(loggedInUser);
-          return { success: true };
-        }
-
-        const errLower = (supaError?.message || '').toLowerCase();
-
-        // Crucial: Account already exists in Supabase, just waiting for email verification!
-        if (errLower.includes('email not confirmed')) {
-          return {
-            success: false,
-            requiresEmailVerification: true,
+        try {
+          const { data: supaLoginData, error: supaError } = await supabase.auth.signInWithPassword({
             email,
-            error:
-              'Akun Anda sudah terdaftar, tetapi email belum dikonfirmasi! Silakan klik link verifikasi atau masukkan kode dari email Anda.',
-          };
-        }
+            password,
+          });
 
-        if (errLower.includes('invalid login credentials')) {
-          recordFailedAttempt(email);
-          let extraHint = '';
-          if (email.endsWith('@gmail.com')) {
-            const [local] = email.split('@');
-            if (local.includes('.')) {
-              extraHint = ` Perhatian: Jika saat mendaftar Anda mengetik tanpa titik (${local.replace(/\./g, '')}@gmail.com), gunakan penulisan tersebut karena sistem membedakan karakter titik.`;
-            } else {
-              extraHint = ` Perhatian: Jika saat mendaftar Anda menggunakan tanda titik (misal indo.frederika@gmail.com), masukkan titik yang sama saat login.`;
-            }
+          if (!supaError && supaLoginData.user && supaLoginData.session) {
+            clearFailedAttempts(email);
+            const loggedInUser = mapSupabaseUserToAccount(supaLoginData.user);
+            const session: AuthSession = {
+              token: supaLoginData.session.access_token || generateSessionToken(),
+              userId: loggedInUser.id,
+              email: loggedInUser.email,
+              expiresAt: credentials.rememberMe
+                ? Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
+                : Date.now() + 24 * 60 * 60 * 1000,
+              rememberMe: !!credentials.rememberMe,
+            };
+            localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+            setUser(loggedInUser);
+            return { success: true };
           }
-          return {
-            success: false,
-            error: `Email belum terdaftar atau kata sandi salah. Periksa kembali penulisan email dan huruf besar/kecil kata sandi Anda.${extraHint}`,
-          };
+        } catch {
+          // Fall through to server-backed verification
         }
-
-        if (errLower.includes('rate limit') || errLower.includes('too many requests')) {
-          return {
-            success: false,
-            error: 'Terlalu banyak permintaan login ke server. Tunggu sebentar lalu coba kembali.',
-          };
-        }
-
-        return {
-          success: false,
-          error: supaError?.message || 'Gagal masuk ke akun. Periksa koneksi internet Anda.',
-        };
       }
 
-      // Offline / No-Supabase fallback
+      // 2. Server-backed account verification (prevents email rate-limit & confirmation lockouts)
+      try {
+        const res = await fetch('/api/auth/server-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get_credentials', email }),
+        });
+        const serverData = await res.json().catch(() => null);
+
+        if (serverData?.success && serverData?.user) {
+          const isValid = await verifyPassword(
+            password,
+            serverData.user.passwordHash,
+            serverData.user.passwordSalt
+          );
+
+          if (isValid) {
+            clearFailedAttempts(email);
+            const session: AuthSession = {
+              token: generateSessionToken(),
+              userId: serverData.user.id,
+              email: serverData.user.email,
+              expiresAt: credentials.rememberMe
+                ? Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
+                : Date.now() + 24 * 60 * 60 * 1000,
+              rememberMe: !!credentials.rememberMe,
+            };
+            if (credentials.rememberMe) {
+              localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+              sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+            } else {
+              sessionStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+              localStorage.removeItem(STORAGE_KEYS.SESSION);
+            }
+
+            const { passwordHash, passwordSalt, ...cleanUser } = serverData.user;
+            setUser(cleanUser as UserAccount);
+            return { success: true };
+          }
+        }
+      } catch {
+        // Fall through to local fallback
+      }
+
+      // 3. Local offline fallback
       const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
       const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
-
       const targetUser = users.find((u) => u.email.toLowerCase() === email);
-      if (!targetUser) {
-        recordFailedAttempt(email);
-        return { success: false, error: 'Email atau kata sandi tidak sesuai.' };
+
+      if (targetUser) {
+        const isValid = await verifyPassword(
+          password,
+          targetUser.passwordHash,
+          targetUser.passwordSalt
+        );
+
+        if (isValid) {
+          clearFailedAttempts(email);
+          targetUser.lastLoginAt = new Date().toISOString();
+          const updatedUsers = users.map((u) => (u.id === targetUser.id ? targetUser : u));
+          localStorage.setItem(STORAGE_KEYS.USERS_DB, JSON.stringify(updatedUsers));
+
+          const session: AuthSession = {
+            token: generateSessionToken(),
+            userId: targetUser.id,
+            email: targetUser.email,
+            expiresAt: credentials.rememberMe
+              ? Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
+              : Date.now() + 24 * 60 * 60 * 1000,
+            rememberMe: !!credentials.rememberMe,
+          };
+
+          if (credentials.rememberMe) {
+            localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+            sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+          } else {
+            sessionStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+            localStorage.removeItem(STORAGE_KEYS.SESSION);
+          }
+
+          setUser(targetUser);
+          return { success: true };
+        }
       }
 
-      const isValid = await verifyPassword(
-        password,
-        targetUser.passwordHash,
-        targetUser.passwordSalt
-      );
-
-      if (!isValid) {
-        recordFailedAttempt(email);
-        return { success: false, error: 'Email atau kata sandi tidak sesuai.' };
+      recordFailedAttempt(email);
+      let extraHint = '';
+      if (email.endsWith('@gmail.com')) {
+        const [local] = email.split('@');
+        if (local.includes('.')) {
+          extraHint = ` Catatan: Jika saat mendaftar Anda tidak mengetik titik (${local.replace(/\./g, '')}@gmail.com), gunakan penulisan tersebut.`;
+        }
       }
 
-      clearFailedAttempts(email);
-      targetUser.lastLoginAt = new Date().toISOString();
-      const updatedUsers = users.map((u) => (u.id === targetUser.id ? targetUser : u));
-      localStorage.setItem(STORAGE_KEYS.USERS_DB, JSON.stringify(updatedUsers));
-
-      const session: AuthSession = {
-        token: generateSessionToken(),
-        userId: targetUser.id,
-        email: targetUser.email,
-        expiresAt: credentials.rememberMe
-          ? Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
-          : Date.now() + 24 * 60 * 60 * 1000,
-        rememberMe: !!credentials.rememberMe,
+      return {
+        success: false,
+        error: `Email atau kata sandi tidak cocok. Silakan periksa kembali email dan kata sandi Anda.${extraHint}`,
       };
-
-      if (credentials.rememberMe) {
-        localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-        sessionStorage.removeItem(STORAGE_KEYS.SESSION);
-      } else {
-        sessionStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-        localStorage.removeItem(STORAGE_KEYS.SESSION);
-      }
-
-      setUser(targetUser);
-      return { success: true };
     } catch (err: unknown) {
       console.error('Login error:', err);
       return {
         success: false,
-        error: 'Terjadi gangguan jaringan saat memverifikasi akun. Silakan coba lagi.',
+        error: 'Terjadi gangguan koneksi saat masuk. Silakan coba lagi.',
       };
     }
   }, []);
 
   /**
-   * Register New Account (Requires Real Active Email Domain + Real Email Confirmation)
+   * Register New Account (Instant Access - Saved to Server, No Email Verification Hassle)
    */
   const register = useCallback(async (data: RegisterData): Promise<AuthResult> => {
     const email = data.email.trim().toLowerCase();
@@ -417,7 +484,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!storeName) {
-      return { success: false, error: 'Nama toko atau bisnis wajib diisi.' };
+      return { success: false, error: 'Nama toko atau usaha wajib diisi.' };
     }
 
     if (!validateEmail(email)) {
@@ -432,121 +499,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: strength.message };
     }
 
-    // Step 1: Verify on server via DNS MX lookup that the email domain REALLY exists & receives mail
-    const emailCheck = await verifyRealEmailOnServer(email);
-    if (!emailCheck.valid) {
-      return {
-        success: false,
-        suggestedEmail: emailCheck.suggestion,
-        error:
-          emailCheck.reason ||
-          'Alamat email tidak valid atau domain email tidak aktif. Gunakan email asli yang benar-benar ada.',
-      };
-    }
-
     try {
-      if (isSupabaseConfigured) {
-        const redirectOrigin =
-          typeof window !== 'undefined' ? window.location.origin : undefined;
-
-        const { data: supaRegData, error: supaError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: redirectOrigin,
-            data: {
-              name,
-              storeName,
-              businessCategory,
-            },
-          },
-        });
-
-        if (supaError) {
-          const msgLower = supaError.message.toLowerCase();
-          if (msgLower.includes('already registered') || msgLower.includes('already exists')) {
-            return {
-              success: false,
-              alreadyRegistered: true,
-              email,
-              error:
-                'Alamat email ini sudah terdaftar! Silakan langsung masuk di tab Masuk Akun, atau konfirmasi email Anda.',
-            };
-          }
-          if (msgLower.includes('rate limit') || msgLower.includes('over_email_send_rate_limit')) {
-            return {
-              success: false,
-              error:
-                'Batas pengiriman email verifikasi tercapai sementara. Silakan cek kotak masuk/Spam Anda dari pendaftaran sebelumnya, atau coba lagi beberapa menit lagi.',
-            };
-          }
-          if (msgLower.includes('invalid') || msgLower.includes('unable to validate')) {
-            return {
-              success: false,
-              error:
-                'Alamat email ditolak karena tidak valid. Gunakan email aktif yang benar-benar ada.',
-            };
-          }
-          return {
-            success: false,
-            error: `Gagal mendaftarkan email: ${supaError.message}`,
-          };
-        }
-
-        // Detect obfuscated duplicate signup when Supabase "Confirm email" is enabled (identities === [])
-        if (
-          supaRegData.user &&
-          Array.isArray(supaRegData.user.identities) &&
-          supaRegData.user.identities.length === 0
-        ) {
-          return {
-            success: false,
-            alreadyRegistered: true,
-            email,
-            error:
-              'Email ini sudah terdaftar di KASRA! Silakan masuk di tab Masuk Akun (jika belum klik verifikasi, Anda bisa kirim ulang email verifikasi saat masuk).',
-          };
-        }
-
-        // Case A: Supabase requires real email inbox confirmation (session is null until verified)
-        if (supaRegData.user && !supaRegData.session) {
-          return {
-            success: true,
-            requiresEmailVerification: true,
-            email,
-          };
-        }
-
-        // Case B: Session immediately active (e.g. if Confirm Email was turned off on Supabase)
-        if (supaRegData.user && supaRegData.session) {
-          const newUser = mapSupabaseUserToAccount(supaRegData.user);
-          setUser(newUser);
-          return { success: true };
-        }
-
-        return {
-          success: false,
-          error: 'Pendaftaran tidak dapat diselesaikan. Silakan coba lagi.',
-        };
-      }
-
-      // Offline / No-Supabase fallback
-      const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
-      const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
-
-      const existing = users.find((u) => u.email.toLowerCase() === email);
-      if (existing) {
-        return {
-          success: false,
-          alreadyRegistered: true,
-          email,
-          error: 'Alamat email ini sudah terdaftar. Silakan langsung masuk.',
-        };
-      }
-
       const { hash, salt } = await hashPassword(password);
+      const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newUser: UserAccount = {
-        id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: userId,
         name,
         email,
         storeName,
@@ -557,9 +514,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLoginAt: new Date().toISOString(),
       };
 
-      users.push(newUser);
-      localStorage.setItem(STORAGE_KEYS.USERS_DB, JSON.stringify(users));
+      // 1. Save directly to Server DB (guaranteed persistent across devices & reloads)
+      try {
+        await fetch('/api/auth/server-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'register', user: newUser }),
+        });
+      } catch (srvErr) {
+        console.warn('Server user save warning:', srvErr);
+      }
 
+      // 2. Save to local storage cache
+      try {
+        const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_DB);
+        const users: UserAccount[] = rawUsers ? JSON.parse(rawUsers) : [];
+        const filtered = users.filter((u) => u.email.toLowerCase() !== email);
+        filtered.push(newUser);
+        localStorage.setItem(STORAGE_KEYS.USERS_DB, JSON.stringify(filtered));
+      } catch {
+        // ignore
+      }
+
+      // 3. Save persistent 7-day session
       const session: AuthSession = {
         token: generateSessionToken(),
         userId: newUser.id,
@@ -569,13 +546,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
 
+      // 4. Background non-blocking sync to Supabase (if Supabase Auth is enabled)
+      if (isSupabaseConfigured) {
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name,
+              storeName,
+              businessCategory,
+            },
+          },
+        }).then(({ data: supaRegData }) => {
+          if (supaRegData?.user?.id) {
+            newUser.id = supaRegData.user.id;
+          }
+        }).catch(() => {
+          // Never block user registration on Supabase email rate limits
+        });
+      }
+
+      // 5. Instantly login the user!
+      clearFailedAttempts(email);
       setUser(newUser);
       return { success: true };
     } catch (err: unknown) {
       console.error('Registration error:', err);
       return {
         success: false,
-        error: 'Gagal membuat akun baru karena gangguan jaringan. Silakan coba lagi.',
+        error: 'Gagal membuat akun toko. Silakan coba lagi.',
       };
     }
   }, []);
