@@ -64,7 +64,10 @@ export const AnalyticsView: React.FC = () => {
     monthIncome,
     monthExpense,
     totalAssetValue,
+    theme,
   } = useKasra();
+
+  const isDark = theme === 'dark';
 
   // Segmented Mode Switch (Chart | Report | Table)
   const [viewSegment, setViewSegment] = useState<'chart' | 'report' | 'table'>('chart');
@@ -455,9 +458,13 @@ export const AnalyticsView: React.FC = () => {
           <button
             type="button"
             onClick={() => exportToOfficialPdf(profile, transactions, products)}
-            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer"
+            className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap cursor-pointer ${
+              isDark
+                ? 'bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7]'
+                : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6] border border-[#1E3D1C]'
+            }`}
           >
-            <FileText className="w-4 h-4 text-[#0D1C42] shrink-0" />
+            <FileText className={`w-4 h-4 shrink-0 ${isDark ? 'text-[#0D1C42]' : 'text-[#F8FAF6]'}`} />
             <span>Cetak PDF Resmi Bank (KUR)</span>
           </button>
         </div>
@@ -471,7 +478,9 @@ export const AnalyticsView: React.FC = () => {
             onClick={() => setViewSegment('chart')}
             className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'chart'
-                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                ? isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                  : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -484,7 +493,9 @@ export const AnalyticsView: React.FC = () => {
             onClick={() => setViewSegment('report')}
             className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'report'
-                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                ? isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                  : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -497,7 +508,9 @@ export const AnalyticsView: React.FC = () => {
             onClick={() => setViewSegment('table')}
             className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
               viewSegment === 'table'
-                ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                ? isDark
+                  ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-xs font-bold'
+                  : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -515,7 +528,7 @@ export const AnalyticsView: React.FC = () => {
             {/* Diagram Model Selector */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="flex items-center gap-2 px-1">
-                <BarChart2 className="w-4 h-4 text-amber-500" />
+                <BarChart2 className={`w-4 h-4 ${isDark ? 'text-amber-500' : 'text-[#1E3D1C]'}`} />
                 <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Model Diagram:</span>
               </div>
 
@@ -525,7 +538,9 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('bar')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'bar'
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                      ? isDark
+                        ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                        : 'bg-[#1E3D1C] text-[#F8FAF6] border border-[#1E3D1C] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -538,7 +553,9 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('area')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'area'
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                      ? isDark
+                        ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                        : 'bg-[#1E3D1C] text-[#F8FAF6] border border-[#1E3D1C] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -551,7 +568,9 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('donut')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'donut'
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                      ? isDark
+                        ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                        : 'bg-[#1E3D1C] text-[#F8FAF6] border border-[#1E3D1C] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -564,7 +583,9 @@ export const AnalyticsView: React.FC = () => {
                   onClick={() => setChartType('composed')}
                   className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'composed'
-                      ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                      ? isDark
+                        ? 'bg-[#FCF1D0] text-[#0D1C42] border border-[#e5d5a7] shadow-xs font-bold'
+                        : 'bg-[#1E3D1C] text-[#F8FAF6] border border-[#1E3D1C] shadow-xs font-bold'
                       : 'bg-slate-50 text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
@@ -591,7 +612,9 @@ export const AnalyticsView: React.FC = () => {
                     onClick={() => setChartTimeframe(tf)}
                     className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                       chartTimeframe === tf
-                        ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-xs'
+                        ? isDark
+                          ? 'bg-[#FCF1D0] text-[#0D1C42] font-bold shadow-xs'
+                          : 'bg-[#1E3D1C] text-[#F8FAF6] font-bold shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                     }`}
                   >
@@ -966,9 +989,13 @@ export const AnalyticsView: React.FC = () => {
             <button
               type="button"
               onClick={() => exportToOfficialPdf(profile, transactions, products)}
-              className="px-4 py-2 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm cursor-pointer"
+              className={`px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-sm cursor-pointer transition-all ${
+                isDark
+                  ? 'bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7]'
+                  : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6] border border-[#1E3D1C]'
+              }`}
             >
-              <Download className="w-3.5 h-3.5 text-[#0D1C42]" />
+              <Download className={`w-3.5 h-3.5 ${isDark ? 'text-[#0D1C42]' : 'text-[#F8FAF6]'}`} />
               <span>Unduh PDF</span>
             </button>
           </div>
@@ -1048,9 +1075,13 @@ export const AnalyticsView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => exportToExcel(profile, transactions, products)}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7] text-xs font-bold shadow-sm cursor-pointer"
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm cursor-pointer transition-all ${
+                  isDark
+                    ? 'bg-[#FCF1D0] hover:opacity-90 text-[#0D1C42] border border-[#e5d5a7]'
+                    : 'bg-[#1E3D1C] hover:bg-[#162E14] text-[#F8FAF6] border border-[#1E3D1C]'
+                }`}
               >
-                <Download className="w-3.5 h-3.5 text-[#0D1C42]" />
+                <Download className={`w-3.5 h-3.5 ${isDark ? 'text-[#0D1C42]' : 'text-[#F8FAF6]'}`} />
                 <span>Simpan Excel</span>
               </button>
             </div>
