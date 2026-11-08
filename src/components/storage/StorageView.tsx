@@ -7,13 +7,11 @@ import { formatRupiah, formatDateIndo, getExpiryStatus, getStockStatus, formatBa
 import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import { AccessibleDatePicker } from '@/components/ui/AccessibleDatePicker';
-import { ProductVoiceEditModal } from '@/components/storage/ProductVoiceEditModal';
 import {
   Package,
   Plus,
   ScanLine,
   Mic,
-  SlidersHorizontal,
   Search,
   Filter,
   Calendar,
@@ -79,7 +77,7 @@ function getLocalTodayStr(): string {
 }
 
 interface StorageViewProps {
-  onOpenVoice: () => void;
+  onOpenVoice: (targetProduct?: Product | null) => void;
   onOpenScan: () => void;
 }
 
@@ -149,15 +147,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
 
   // Quick Change Image Modal
   const [quickImageTarget, setQuickImageTarget] = useState<Product | null>(null);
-
-  // Dedicated Voice Product Info Edit Modal
-  const [isVoiceEditOpen, setIsVoiceEditOpen] = useState(false);
-  const [voiceEditTargetProduct, setVoiceEditTargetProduct] = useState<Product | null>(null);
-
-  const openVoiceProductEditor = (target?: Product | null) => {
-    setVoiceEditTargetProduct(target || null);
-    setIsVoiceEditOpen(true);
-  };
 
   // Add / Edit Product Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -711,21 +700,17 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
           )}
 
           <button
-            onClick={() => openVoiceProductEditor(null)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all shadow-xs cursor-pointer"
-            title="Suara khusus untuk mengubah harga jual, modal, tanggal kedaluwarsa, lokasi, kategori, dan info barang lainnya"
+            type="button"
+            onClick={() => onOpenVoice(null)}
+            className={`p-2.5 rounded-full border transition-all shadow-xs cursor-pointer ${
+              isDark
+                ? 'bg-[#172A57] hover:bg-[#2B4684] text-[#FCF1D0] border-[#345294]'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+            }`}
+            title="Suara Pintar Kasra (Transaksi, Stok & Ubah Info Barang)"
+            aria-label="Input & Ubah via Suara"
           >
-            <Mic className="w-3.5 h-3.5 text-indigo-600" />
-            <SlidersHorizontal className="w-3 h-3 text-indigo-500" />
-            <span>Ubah Info Barang</span>
-          </button>
-
-          <button
-            onClick={onOpenVoice}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-all shadow-xs cursor-pointer"
-          >
-            <Mic className="w-3.5 h-3.5 text-slate-500" />
-            <span>Bicara</span>
+            <Mic className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1367,16 +1352,16 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     >
                       <button
                         type="button"
-                        onClick={() => openVoiceProductEditor(p)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold transition-colors cursor-pointer ${
+                        onClick={() => onOpenVoice(p)}
+                        className={`p-1.5 rounded-full border transition-colors cursor-pointer ${
                           isDark
                             ? 'bg-[#172A57] hover:bg-[#2B4684] text-[#FCF1D0] border-[#345294]'
-                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                            : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
                         }`}
                         title={`Ubah info ${p.name} dengan suara`}
+                        aria-label={`Ubah info ${p.name} dengan suara`}
                       >
-                        <Mic className={`w-3 h-3 ${isDark ? 'text-[#FCF1D0]' : 'text-indigo-600'}`} />
-                        <span>Ubah via Suara</span>
+                        <Mic className="w-3.5 h-3.5" />
                       </button>
 
                       <button
@@ -1500,9 +1485,10 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                             <div className="inline-flex items-center gap-1">
                               <button
                                 type="button"
-                                onClick={() => openVoiceProductEditor(p)}
+                                onClick={() => onOpenVoice(p)}
                                 title={`Ubah info ${p.name} dengan suara`}
-                                className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                aria-label={`Ubah info ${p.name} dengan suara`}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
                               >
                                 <Mic className="w-3.5 h-3.5" />
                               </button>
@@ -2017,12 +2003,13 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
                     type="button"
                     onClick={() => {
                       const target = products.find((item) => item.id === editingProductId) || null;
-                      openVoiceProductEditor(target);
+                      onOpenVoice(target);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                    className="p-2 rounded-full border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="Ubah info barang dengan suara"
+                    aria-label="Ubah info barang dengan suara"
                   >
-                    <Mic className="w-3.5 h-3.5" />
-                    <span>Bicara Ubah Info</span>
+                    <Mic className="w-4 h-4" />
                   </button>
                 )}
                 <button
@@ -3134,51 +3121,6 @@ export const StorageView: React.FC<StorageViewProps> = ({ onOpenVoice, onOpenSca
           }
         }}
         onCancel={() => setDeleteTargetProduct(null)}
-      />
-
-      {/* Dedicated Voice Modal for Modifying Product Information */}
-      <ProductVoiceEditModal
-        isOpen={isVoiceEditOpen}
-        onClose={() => setIsVoiceEditOpen(false)}
-        initialProduct={voiceEditTargetProduct}
-        onAppliedPatch={(productId, patch) => {
-          if (editingProductId === productId) {
-            if (patch.name !== undefined) setFormName(patch.name);
-            if (patch.sku !== undefined) setFormSku(patch.sku);
-            if (patch.category !== undefined) setFormCategory(patch.category);
-            if (patch.subcategory !== undefined) setFormSubcategory(patch.subcategory);
-            if (patch.location !== undefined) setFormLocation(patch.location);
-            if (patch.unit !== undefined) setFormUnit(patch.unit);
-            if (patch.currentStock !== undefined) setFormCurrentStock(String(patch.currentStock));
-            if (patch.minStockAlert !== undefined) setFormMinStock(String(patch.minStockAlert));
-            if (patch.purchaseDate !== undefined) setFormPurchaseDate(patch.purchaseDate);
-            if (patch.expiryDate !== undefined) {
-              setFormExpiryDate(patch.expiryDate);
-              if (patch.expiryDate === null) {
-                setFormBatches((prev) => prev.map((b) => ({ ...b, expiryDate: null })));
-              } else {
-                setFormBatches((prev) => {
-                  if (prev.length === 0) return prev;
-                  let done = false;
-                  return prev.map((b) => {
-                    if (!done && b.quantity > 0) {
-                      done = true;
-                      return { ...b, expiryDate: patch.expiryDate };
-                    }
-                    return b;
-                  });
-                });
-              }
-            }
-            if (patch.hppAmount !== undefined) {
-              setHppMethod('manual');
-              setManualHpp(String(patch.hppAmount));
-            }
-            if (patch.sellingPrice !== undefined) {
-              setFormSellingPrice(String(patch.sellingPrice));
-            }
-          }
-        }}
       />
     </div>
   );

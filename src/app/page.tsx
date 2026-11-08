@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { KasraProvider, useKasra } from '@/lib/store/KasraContext';
-import { TransactionType } from '@/types';
+import { TransactionType, Product } from '@/types';
 import { AuthView } from '@/components/auth/AuthView';
 import { LandingView } from '@/components/landing/LandingView';
 import { SidebarRail } from '@/components/layout/SidebarRail';
@@ -25,6 +25,7 @@ import { KasraLogo } from '@/components/ui/KasraLogo';
 function KasraAppContent() {
   const { activeTab, activeDraft, theme } = useKasra();
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+  const [voiceTargetProduct, setVoiceTargetProduct] = useState<Product | null>(null);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -33,6 +34,11 @@ function KasraAppContent() {
   const handleOpenQuickAdd = (type: TransactionType = 'expense') => {
     setQuickAddType(type);
     setIsQuickAddOpen(true);
+  };
+
+  const handleOpenVoice = (targetProduct: Product | null = null) => {
+    setVoiceTargetProduct(targetProduct);
+    setIsVoiceOpen(true);
   };
 
   return (
@@ -47,13 +53,14 @@ function KasraAppContent() {
       <SidebarRail
         onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
         onOpenScan={() => setIsScanOpen(true)}
+        onOpenVoice={() => handleOpenVoice(null)}
       />
 
       {/* 2. Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header Bar with Theme Toggle & Quick Actions */}
         <HeaderBar
-          onOpenVoice={() => setIsVoiceOpen(true)}
+          onOpenVoice={() => handleOpenVoice(null)}
           onOpenScan={() => setIsScanOpen(true)}
           onOpenQuickAdd={() => handleOpenQuickAdd('expense')}
           isCalculatorOpen={isCalculatorOpen}
@@ -65,7 +72,7 @@ function KasraAppContent() {
           <div className="max-w-7xl mx-auto">
             {activeTab === 'dashboard' && (
               <DashboardView
-                onOpenVoice={() => setIsVoiceOpen(true)}
+                onOpenVoice={() => handleOpenVoice(null)}
                 onOpenScan={() => setIsScanOpen(true)}
                 onOpenCalculator={() => setIsCalculatorOpen((prev) => !prev)}
                 onOpenQuickAdd={(type) => handleOpenQuickAdd(type || 'expense')}
@@ -73,14 +80,14 @@ function KasraAppContent() {
             )}
             {activeTab === 'cash' && (
               <CashView
-                onOpenVoice={() => setIsVoiceOpen(true)}
+                onOpenVoice={() => handleOpenVoice(null)}
                 onOpenScan={() => setIsScanOpen(true)}
                 onOpenQuickAdd={(type) => handleOpenQuickAdd(type || 'income')}
               />
             )}
             {activeTab === 'storage' && (
               <StorageView
-                onOpenVoice={() => setIsVoiceOpen(true)}
+                onOpenVoice={(prod) => handleOpenVoice(prod || null)}
                 onOpenScan={() => setIsScanOpen(true)}
               />
             )}
@@ -102,7 +109,7 @@ function KasraAppContent() {
         onClose={() => setIsQuickAddOpen(false)}
         initialType={quickAddType}
         onOpenScan={() => setIsScanOpen(true)}
-        onOpenVoice={() => setIsVoiceOpen(true)}
+        onOpenVoice={() => handleOpenVoice(null)}
       />
 
       {/* Human-In-The-Loop Draft Confirmation Modal */}
@@ -111,7 +118,11 @@ function KasraAppContent() {
       {/* Quick Voice Mic Modal */}
       <QuickVoiceModal
         isOpen={isVoiceOpen}
-        onClose={() => setIsVoiceOpen(false)}
+        onClose={() => {
+          setIsVoiceOpen(false);
+          setVoiceTargetProduct(null);
+        }}
+        initialProduct={voiceTargetProduct}
         contextType={activeTab === 'storage' ? 'storage' : 'omni'}
       />
 

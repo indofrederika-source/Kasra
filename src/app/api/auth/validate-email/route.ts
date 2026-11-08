@@ -85,6 +85,40 @@ const COMMON_DOMAIN_TYPOS: Record<string, string> = {
   'icloud.co': 'icloud.com',
 };
 
+const OBVIOUS_FAKE_LOCAL_PARTS = new Set([
+  'test',
+  'testing',
+  'tester',
+  'coba',
+  'cobain',
+  'percobaan',
+  'ngasal',
+  'asal',
+  'asalan',
+  'palsu',
+  'fake',
+  'dummy',
+  'sample',
+  'contoh',
+  'qwerty',
+  'qwertyuiop',
+  'asdf',
+  'asdfgh',
+  'asdfghjkl',
+  'zxcvbn',
+  'zxcvbnm',
+  'abcdef',
+  'abcdefgh',
+  '12345',
+  '123456',
+  '1234567',
+  '12345678',
+  '123456789',
+  'none',
+  'null',
+  'tidakada',
+]);
+
 const STRICT_EMAIL_REGEX =
   /^[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]{0,62}[a-zA-Z0-9])?@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
 
@@ -121,6 +155,13 @@ export async function POST(request: Request) {
       return Response.json({
         valid: false,
         reason: 'Nama pengguna email terlalu pendek atau tidak valid.',
+      });
+    }
+
+    if (OBVIOUS_FAKE_LOCAL_PARTS.has(localPart.toLowerCase())) {
+      return Response.json({
+        valid: false,
+        reason: `Alamat email "${rawEmail}" terdeteksi sebagai akun percobaan/ngasal. Gunakan email pribadi atau bisnis asli Anda.`,
       });
     }
 

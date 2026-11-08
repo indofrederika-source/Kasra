@@ -83,8 +83,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       try {
         if (isSupabaseConfigured) {
-          // If redirected back with PKCE ?code=..., exchange it for a persistent session
+          // Clear legacy pre-Supabase local user cache & stale lockouts so cloud login is never blocked locally
           if (typeof window !== 'undefined') {
+            try {
+              localStorage.removeItem(STORAGE_KEYS.USERS_DB);
+              localStorage.removeItem(STORAGE_KEYS.SESSION);
+              sessionStorage.removeItem(STORAGE_KEYS.SESSION);
+              const rawAttempts = localStorage.getItem(STORAGE_KEYS.LOGIN_ATTEMPTS);
+              if (rawAttempts) {
+                const parsedAttempts = JSON.parse(rawAttempts);
+                delete parsedAttempts['indo.frederika@gmail.com'];
+                delete parsedAttempts['indofrederika@gmail.com'];
+                localStorage.setItem(STORAGE_KEYS.LOGIN_ATTEMPTS, JSON.stringify(parsedAttempts));
+              }
+            } catch {
+              // ignore storage errors
+            }
+
+            // If redirected back with PKCE ?code=..., exchange it for a persistent session
             const url = new URL(window.location.href);
             const authCode = url.searchParams.get('code');
             if (authCode) {
@@ -303,10 +319,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (errLower.includes('invalid login credentials')) {
           recordFailedAttempt(email);
+          let extraHint = '';
+          if (email.endsWith('@gmail.com')) {
+            const [local] = email.split('@');
+            if (local.includes('.')) {
+              extraHint = ` Perhatian: Jika saat mendaftar Anda mengetik tanpa titik (${local.replace(/\./g, '')}@gmail.com), gunakan penulisan tersebut karena sistem membedakan karakter titik.`;
+            } else {
+              extraHint = ` Perhatian: Jika saat mendaftar Anda menggunakan tanda titik (misal indo.frederika@gmail.com), masukkan titik yang sama saat login.`;
+            }
+          }
           return {
             success: false,
-            error:
-              'Email belum terdaftar atau kata sandi salah. Periksa kembali penulisan email dan huruf besar/kecil kata sandi Anda.',
+            error: `Email belum terdaftar atau kata sandi salah. Periksa kembali penulisan email dan huruf besar/kecil kata sandi Anda.${extraHint}`,
           };
         }
 

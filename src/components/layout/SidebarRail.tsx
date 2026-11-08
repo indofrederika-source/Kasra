@@ -13,6 +13,7 @@ import {
   Store,
   Settings,
   Plus,
+  Mic,
 } from 'lucide-react';
 
 interface TabItem {
@@ -26,10 +27,12 @@ interface TabItem {
 interface SidebarRailProps {
   onOpenQuickAdd?: () => void;
   onOpenScan?: () => void;
+  onOpenVoice?: () => void;
 }
 
 export const SidebarRail: React.FC<SidebarRailProps> = ({
   onOpenQuickAdd,
+  onOpenVoice,
 }) => {
   const {
     activeTab,
@@ -268,19 +271,20 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({
           })}
         </div>
 
-        {/* Center Floating Action Button */}
+        {/* Center Floating Mic Action Button */}
         <div className="relative -top-4 px-2">
           <button
             type="button"
-            onClick={onOpenQuickAdd}
+            onClick={onOpenVoice}
             className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95 cursor-pointer ${
               isDark
                 ? 'bg-[#FCF1D0] text-[#0D1C42] shadow-[0_8px_25px_rgba(7,16,38,0.5)] ring-4 ring-[#22396F]'
                 : 'bg-[#1E3D1C] text-[#F8FAF6] shadow-[0_10px_24px_rgba(30,61,28,0.35)] ring-4 ring-[#F8FAF6]'
             }`}
-            title="Catat Transaksi Cepat"
+            title="Bicara ke Kasra (Transaksi, Stok, & Ubah Info Barang)"
+            aria-label="Input Suara Pintar Kasra"
           >
-            <Plus className="w-6 h-6 stroke-[2.6]" />
+            <Mic className="w-6 h-6 stroke-[2.3]" />
           </button>
         </div>
 
